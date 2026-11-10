@@ -9,7 +9,7 @@
   <img src="docs/screenshot-favs.png" width="49%" alt="收藏面板">
 </p>
 
-判定、算牌、拆解全部在浏览器本地跑（纯 JS 牌效引擎），点牌即出结果，不发请求、不花 token；DeepSeek 只在你要的时候把理由讲成人话。
+判定、算牌、拆解全部在浏览器本地跑（纯 JS 牌效引擎），点牌即出结果，不发请求、不花 token。**默认纯本地运行，不连任何模型**；想接自己的 AI 讲理由，见 [接入 AI](#接入-ai可选)。
 
 ## 启动
 
@@ -25,7 +25,7 @@ node server.mjs
 - **打对了不打扰你**：直接进牌河、摸下一张，全程零请求。
 - **打错了会拦下来**：牌退回手里、不摸牌，并自动请 AI 讲这一手错在哪；你可以换一张重打，也可以「就这样打」硬着头皮继续。
 - AI 只在上面这种「打错」时自动出现；打对了想追一句可以按 `A`（隐藏快捷键，不占界面）。它拿到的输入里已经写好判定和最优解，只负责讲逻辑，首字通常 0.3–0.7s。
-- 没配置 API key 也能练，只是没有 AI 那段话。
+- **默认就是纯本地**：仓库里没有 `coach.config.json`，clone 下来直接练，只跑本地引擎，不连网、不需要 key。
 
 ## 玩法
 
@@ -92,11 +92,21 @@ node server.mjs
 
 所以分工是：**引擎判定对错和最优解，AI 只负责把原因讲成人话**。请求 AI 时，把判定、最优解、向听与进张一起塞进 prompt，模型不用再推演，只组织语言——这样既快，也不会出现「89 张少于 77 张」这种自相矛盾的比较。
 
-## 配置
+## 接入 AI（可选）
 
-复制一份 `coach.config.example.json` 改名成 `coach.config.json`，填上你自己的 `baseUrl` / `apiKey` / `model`。这个文件已在 `.gitignore` 里，不会被提交。
+不接也能完整使用：判定、最优解、改良、牌墙、收藏、历史全是本地算的。AI 只是把已经算好的结论讲成一段人话，**接不接不影响对错判定**。
 
-`coach.config.json`：
+想接的话：
+
+```bash
+cp coach.config.example.json coach.config.json   # Windows: copy 一份再改名
+```
+
+然后填 `baseUrl` / `apiKey` / `model`，重启服务。这个文件已在 `.gitignore` 里，不会被提交。
+
+判断是否接上：`curl http://127.0.0.1:8788/api/health` 里 `"coach": true` 就是接上了；`false` 表示没配 key，此时按 `A` 会提示去配置，不会发请求。
+
+示例（`coach.config.json`，任一 OpenAI/Anthropic 兼容网关都行）：
 
 ```json
 {
@@ -109,14 +119,14 @@ node server.mjs
 ```
 
 也可用环境变量 `COACH_API_KEY` / `COACH_BASE_URL` / `COACH_MODEL` / `PORT` 覆盖。
-`baseUrl` 指向任意 Anthropic 兼容的 `/v1/messages` 网关；`/api/health` 可以看当前模型与网关是否就绪。
+`baseUrl` 指向任意 Anthropic 兼容的 `/v1/messages` 网关（本地网关、官方 API、自建代理都行）。
 
 ## 文件结构
 
 ```
 engine.mjs              牌效引擎（纯 ESM，浏览器/Node 共用：向听、进张、听牌、判定、发牌、拆解）
 server.mjs              本地静态服务 + /api/coach（转发 DeepSeek，SSE 流式）
-coach.config.json       教练模型配置
+coach.config.example.json 配置模板（复制为 coach.config.json 后填 key；后者不入库）
 public/index.html       页面结构
 public/style.css        样式（纸感主题：米白纸面 / 象牙牌 / 素点评面板）
 public/app.js           状态机：出牌 → 判定 →（打错）AI 讲解/退回 → 摸牌 → 胡牌；含撤销、历史、错题本、收藏

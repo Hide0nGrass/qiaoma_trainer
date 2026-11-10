@@ -39,7 +39,8 @@ const S = {
   judged: 0, correct: 0, streak: 0, bestStreak: 0,
   busy: false, done: false,
   coachSeq: 0, coachAbort: null,
-  lastPayload: null, coachStreaming: false, localText: '',
+  lastPayload: null,
+  coachOff: false, coachStreaming: false, localText: '',
   hintTimer: 0,
   undoStack: [],   // 每一手「已出牌」之前的快照
   pending: null,   // 打错了但还没决定「就这样打」的一手
@@ -666,6 +667,10 @@ function forceCommit() {
 /** 按需：让 AI 解释刚才这一手 */
 function explainLast() {
   if (!S.lastPayload || S.coachStreaming) return;
+  if (S.coachOff) {
+    toast('未接入 AI · 复制 coach.config.example.json 为 coach.config.json 并填入 key 后重启');
+    return;
+  }
   S.coachStreaming = true;
   els.coachMeta.textContent = 'AI 正在组织语言…';
   askCoach(S.lastPayload).finally(() => {
@@ -1264,7 +1269,10 @@ loadFavs();
 renderMistakes();
 startRound(nextSeed());
 applyGroups(groupsOn, { silent: true });
-fetch('/api/health').catch(() => {});
+fetch('/api/health')
+  .then((r) => r.json())
+  .then((j) => { S.coachOff = !j.coach; })
+  .catch(() => { S.coachOff = true; });
 
 // 调试/自动化钩子
 window.__mj = {
