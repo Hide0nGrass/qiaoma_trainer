@@ -208,6 +208,36 @@ kbd {
   letter-spacing: .1em;
   color: var(--muted);
 }
+
+/* 敲不敲：按摸到第几手给建议 */
+.advice {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.advice b { color: var(--ink-2); font-weight: 600; }
+.adv-k { color: var(--ink); font-weight: 600; letter-spacing: .02em; }
+.adv-sep { color: var(--line-2); }
+.adv-verdict {
+  margin-left: 2px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.adv-verdict.now { color: #fffdf8; background: var(--green); }
+.adv-verdict.hold { color: #7a4a12; background: #f7e9d3; border-color: #e7cda3; }
+.adv-verdict.mute { color: var(--muted); border-color: var(--line); }
+.adv-why { color: var(--muted); flex-basis: 100%; padding-left: 2px; }
+@media (max-width: 820px) {
+  .advice { font-size: 11.5px; gap: 4px; }
+  .adv-why { flex-basis: 100%; }
+}
 .chip {
   font-family: var(--serif);
   font-size: 12.5px;

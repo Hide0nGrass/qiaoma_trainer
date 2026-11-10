@@ -12,6 +12,7 @@ const els = {
   badge: $('badge'), headline: $('headline'), metrics: $('metrics'),
   coach: $('coach'), coachText: $('coachText'), coachMeta: $('coachMeta'),
   roundChip: $('roundChip'), wallInfo: $('wallInfo'), shantenInfo: $('shantenInfo'),
+  advice: $('advice'),
   stRounds: $('stRounds'), stRate: $('stRate'), stStreak: $('stStreak'),
   toast: $('toast'),
   rulesModal: $('rulesModal'), rulesBtn: $('rulesBtn'), rulesClose: $('rulesClose'),
@@ -256,8 +257,10 @@ function updateMeta() {
   const n = S.hand.length;
   let sh = null;
   let seven = false;
+  let info = null;
   try {
-    sh = n === 14 ? analyzeHand(S.hand)[0].shanten : shanten(countsOf(S.hand));
+    if (n === 14) { info = analyzeHand(S.hand); sh = info[0].shanten; }
+    else sh = shanten(countsOf(S.hand));
     if (n >= 13) seven = decompose(S.hand).sevenPairs;
   } catch { /* ignore */ }
   els.roundChip.textContent = `第 ${S.roundNo} 局`;
@@ -265,6 +268,69 @@ function updateMeta() {
   els.shantenInfo.textContent = sh === null
     ? '向听 —'
     : `向听 ${sh}${sh === 0 ? ' · 听牌' : ''}${seven ? ' · 七对路线' : ''}`;
+  paintAdvice(info);
+}
+
+// 敲不敲：按「你已经摸到第几手」判断值不值得再等
+// 前提（用户的番规）：平胡 0 番和不了，门清 1 番是最低，碰碰胡 / 七对 2 番，除非杠开
+const ADV_Q = 0.08;   // 假设对手每手 8% 先和
+function paintAdvice(info) {
+  if (!els.advice) return;
+  const wall = Math.max(0, S.wall.length - S.cursor);
+  const no = S.cursor + 1;
+  const head = `<span class="adv-k">第 ${no} 手</span><span class="adv-sep">·</span>`
+    + `<span>牌墙 ${wall} 张</span>`;
+  if (S.hand.length !== 14 || !info || !info.length || wall <= 0) {
+    els.advice.innerHTML = head + `<span class="adv-sep">·</span><span>起手中</span>`;
+    return;
+  }
+  const best = info[0];
+  const sh = best.shanten;
+  const c = countsOf(S.hand);
+  const pairs = c.reduce((a, v) => a + (v >= 4 ? 2 : v >= 2 ? 1 : 0), 0);
+  const trips = c.filter((v) => v >= 3).length;
+  const suits = [c.slice(0, 9).some(Boolean), c.slice(9, 18).some(Boolean), c.slice(18).some(Boolean)]
+    .filter(Boolean).length;
+  let hasRun = false;
+  let sevenNow = false;
+  try {
+    const st = decompose(S.hand);
+    sevenNow = st.sevenPairs;
+    hasRun = st.blocks.some((b) => b.shape === '顺子');
+  } catch { /* ignore */ }
+
+  if (sh > 0) {
+    els.advice.innerHTML = head
+      + `<span class="adv-sep">·</span><span>还差 <b>${sh}</b> 步</span>`
+      + `<span class="adv-verdict mute">没听牌，谈不上敲</span>`;
+    return;
+  }
+
+  const k = best.ukeire;
+  const p = k / wall;
+  const decay = Math.min(0.9, p + ADV_Q);
+  const mMax = decay > 0 && decay < 1 ? Math.floor(Math.log(2) / -Math.log(1 - decay)) : 0;
+  const route = sevenNow || pairs >= 6 ? '七对'
+    : (!hasRun && trips >= 3) ? '碰碰胡'
+    : suits === 1 ? '清一色'
+    : null;
+  // 做大牌的那张：手上唯一没成刻/对的那张（单吊）
+  let bigTile = -1;
+  if (route === '碰碰胡' || route === '七对') {
+    for (let i = 0; i < c.length; i++) {
+      if (c[i] === 1) { bigTile = i; break; }
+    }
+  }
+  const bigK = bigTile >= 0 ? Math.max(0, 4 - c[bigTile] - 0) : 0;
+  const hold = !!route && mMax >= 1;
+
+  els.advice.innerHTML = head
+    + `<span class="adv-sep">·</span><span>听 <b>${k}</b> 张</span>`
+    + `<span class="adv-sep">·</span><span>门清 1 番</span>`
+    + `<span class="adv-verdict ${hold ? 'hold' : 'now'}">${hold ? `再等 ≤${mMax} 手` : '现在敲'}</span>`
+    + `<span class="adv-why">${hold
+      ? `单吊 ${bigTile >= 0 ? tileName(bigTile) : '将'} 做${route}：2 番，但只剩 ${bigK} 张；最晚第 ${no + mMax} 手必须敲`
+      : `不敲就等于这手不和；再等一手和率少 ${Math.round(decay * 100)}%${route ? `，${route} 太远` : ''}`}</span>`;
 }
 
 function updateStats() {
