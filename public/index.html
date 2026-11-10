@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>敲麻 · 拆搭训练</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="grain"></div>
+<div class="glow"></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">敲</div>
+      <div class="titles">
+        <h1>敲麻</h1>
+        <p>拆搭训练 · 108 张</p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="stRounds">0</b><i>局</i></div>
+      <div class="stat"><b id="stRate">—</b><i>正确率</i></div>
+      <div class="stat"><b id="stStreak">0</b><i>连对</i></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" id="historyBtn" title="历史牌局（L）">历史 <kbd>L</kbd></button>
+      <button class="btn ghost" id="mistakeBtn" title="错题本（M）">错题本 <kbd>M</kbd></button>
+      <button class="btn ghost" id="rulesBtn" title="规则说明">规则</button>
+      <button class="btn ghost" id="favBtn" title="收藏的牌（F）">收藏 <kbd>F</kbd></button>
+      <button class="btn" id="replayBtn" title="用同一副牌重开（R）">重练 <kbd>R</kbd></button>
+      <button class="btn primary" id="newBtn" title="换一副新牌（空格）">新牌局 <kbd>Space</kbd></button>
+    </div>
+  </header>
+
+  <main class="board">
+    <section class="table-area">
+      <div class="table-meta">
+        <span class="chip" id="roundChip">第 1 局</span>
+        <span class="sep"></span>
+        <span id="wallInfo">牌墙 94 张</span>
+        <span class="sep"></span>
+        <span id="shantenInfo">向听 —</span>
+        <span class="flex1"></span>
+        <button class="switch on" id="groupSwitch" role="switch" aria-checked="true" title="把面子 / 搭子 / 将 / 孤张之间隔开（G）">
+          <span class="switch-dot"></span>搭子分组
+        </button>
+        <button class="switch on" id="previewSwitch" role="switch" aria-checked="true" title="悬停时显示「打它会怎样」的说明（V）">
+          <span class="switch-dot"></span>悬停提示
+        </button>
+        <span class="tip">点击牌 = 打出</span>
+      </div>
+
+      <div class="hand-wrap">
+        <div class="hand-stage">
+          <div class="hand" id="hand"></div>
+        </div>
+      </div>
+
+      <div class="river-wrap">
+        <span class="river-label">牌河</span>
+        <div class="river" id="river"><span class="river-empty">还没有出牌</span></div>
+      </div>
+    </section>
+
+    <section class="coach" id="coach">
+      <div class="coach-head">
+        <div class="verdict-line">
+          <span class="badge idle" id="badge">待出牌</span>
+          <span class="headline" id="headline">选一张打出去，我来告诉你这手拆得对不对</span>
+        </div>
+        <div class="metrics" id="metrics"></div>
+      </div>
+      <div class="tilewall" id="tilewall" hidden></div>
+      <div class="coach-body">
+        <div class="coach-label">
+          <span class="spark"></span>拆搭点评
+          <button class="ask-ai force" id="forceBtn" hidden title="这手不改，照打（Enter）">就这样打 <kbd>↵</kbd></button>
+          <button class="ask-ai" id="saveFav" disabled title="把这一手存起来（F）">☆ 收藏这一手</button>
+        </div>
+        <div class="coach-text" id="coachText"><span class="muted">出牌即判定。</span></div>
+      </div>
+      <div class="coach-foot">
+        <span class="muted" id="coachMeta"></span>
+        <span class="keys"><kbd>Z</kbd> 后退 <kbd>L</kbd> 历史 <kbd>M</kbd> 错题 <kbd>F</kbd> 收藏 <kbd>G</kbd> 分组 <kbd>V</kbd> 悬停 <kbd>H</kbd> 提示</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="preview" id="preview" hidden></div>
+
+<div class="modal" id="rulesModal" hidden>
+  <div class="modal-card">
+    <button class="modal-x" id="rulesClose">×</button>
+    <h2>怎么练</h2>
+    <div class="rule-grid">
+      <div class="rule">
+        <h3>牌与目标</h3>
+        <p>108 张：万 / 筒 / 条 各 1–9，每种 4 张，无字牌。目标是 <b>4 个面子 + 1 个将</b>，另计七对。</p>
+      </div>
+      <div class="rule">
+        <h3>操作</h3>
+        <p>点一张牌 = 打出，立刻判定对错。打对了不打扰你，直接补一张新牌继续；打错或不是最优，牌会退回手里、不摸牌，并弹出 AI 讲这一手的问题，你可以换一张重打，也可以按 <kbd>Enter</kbd>「就这样打」硬着头皮继续。</p>
+      </div>
+      <div class="rule">
+        <h3>评判口径</h3>
+        <p><b>向听</b>：还差几张能听牌，越少越好，是第一优先级。<b>进张</b>：打出后能降低向听的牌还剩多少张，第二优先级。</p>
+      </div>
+      <div class="rule">
+        <h3>评级</h3>
+        <p><b class="ok">最优</b>：向听和进张都最好，而且同分的几手里<b>后续改良</b>最多。<b class="ok">优</b>：和最优那手现在完全等价（同向听、同进张），只是留下的牌改良少几张 —— <b>不算错</b>。<b class="mid">次优</b>：向听没退，但进张比最佳少。<b class="bad">退向听</b>：向听退了一步。</p>
+      <p class="dim">「改良」= 摸到之后还能把有效进张做得更宽的那几张牌。比如打 A 和打 B 现在都是 2 向听 20 张，但留 A 时有 29 张升级牌、留 B 只有 26 张，A 就是最优。</p>
+      </div>
+      <div class="rule">
+        <h3>看牌的三个帮手</h3>
+        <p><b>搭子分组</b>：手牌会按 面子 → 搭子 → 将 → 散张 自动理好，每个块之间留出空隙，块内紧挨着。一眼能数出「手上有几个块、缺哪块」。不想要这份提示，点右上角 <b>搭子分组</b> 开关（<kbd>G</kbd>）关掉，就退回到按牌序平铺。<br>
+        悬停看单张牌的后果（打它会几向听、多少张、什么形）可以用旁边的 <b>悬停提示</b> 开关（<kbd>V</kbd>）关掉，牌本身仍会上浮。<br>
+        <b>悬停预览</b>：鼠标停在一张牌上，立刻显示「打它 → 几向听、多少进张」，还会标出这张牌属于什么形（两面 / 嵌张 / 孤张……），不用真打出去就能比。<br>
+        <b>进张牌墙</b>：出牌后底部会列出「打这张能进哪些牌」和「最佳那张能进哪些牌」，右边横条长度就是进张多少，直接比长短。</p>
+        <p><b>两个基准</b>：点评面板说的是你<b>刚才打的那一手</b>（打牌前的手牌），悬停预览说的是<b>现在这手</b>（已经摸完牌）。摸牌之后手牌变了，两边的「最优」自然可能不是一个数——面板里那份会标上「刚才那手」。</p>
+      </div>
+      <div class="rule">
+        <h3>另两种练法</h3>
+        <p><b>错题本</b>（M）：打错或没打到最优的手会自动收进来，点一行就能重打那一手。<br>
+        <b>收藏</b>（F）：遇到想反复拆的牌，点面板上的「☆ 收藏这一手」存下来；按 F 打开列表，点一行就重打这一手。</p>
+      </div>
+      <div class="rule">
+        <h3>快捷键</h3>
+        <p><kbd>空格</kbd> 新牌局 · <kbd>R</kbd> 重练 · <kbd>Z</kbd> 后退一步 · <kbd>L</kbd> 历史 · <kbd>M</kbd> 错题本 · <kbd>F</kbd> 收藏 · <kbd>G</kbd> 分组开关 · <kbd>V</kbd> 悬停提示开关 · <kbd>H</kbd> 提示 · <kbd>A</kbd> 讲逻辑 · <kbd>Enter</kbd> 就这样打</p>
+      </div>
+      <div class="rule">
+        <h3>历史</h3>
+        <p>每局出过牌就记进<b>历史</b>（存在本机浏览器），点一行直接重玩那一副牌。</p>
+      </div>
+    </div>
+    <p class="rule-note">简化说明：只练一家拆搭，不模拟吃碰杠和对手；牌河只用于记录。七对按标准 7 个对子计（4 张算 1 对）。</p>
+  </div>
+</div>
+
+<div class="modal" id="historyModal" hidden>
+  <div class="modal-card wide">
+    <button class="modal-x" id="historyClose">×</button>
+    <h2>历史牌局</h2>
+    <p class="hist-hint">点一行就重玩那副牌（同一副重开，从第一张打起）。</p>
+    <div class="hist-list" id="histList"></div>
+    <div class="hist-foot">
+      <span class="muted" id="histCount"></span>
+      <button class="btn ghost" id="histClear">清空历史</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="mistakeModal" hidden>
+  <div class="modal-card wide">
+    <button class="modal-x" id="mistakeClose">×</button>
+    <h2>错题本</h2>
+    <p class="hist-hint">这些是你打错或没打最好的牌。点一行重打这一手。</p>
+    <div class="hist-list" id="mistakeList"></div>
+    <div class="hist-foot">
+      <span class="muted" id="mistakeCount"></span>
+      <button class="btn ghost" id="mistakeClear">清空</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="favModal" hidden>
+  <div class="modal-card wide">
+    <button class="modal-x" id="favClose">×</button>
+    <h2>收藏的牌</h2>
+    <p class="hist-hint">平时点「☆ 收藏这一手」把想反复拆的牌存下来，点一行就重打这一手。</p>
+    <div class="hist-list" id="favList"></div>
+    <div class="hist-foot">
+      <span class="muted" id="favCount"></span>
+      <button class="btn ghost" id="favClear">清空</button>
+    </div>
+  </div>
+</div>
+
+<div class="win" id="winOverlay" hidden>
+  <div class="win-card">
+    <div class="win-stamp">胡</div>
+    <div class="win-title">这局拿下了</div>
+    <div class="win-sub" id="winSub">自摸</div>
+    <div class="win-hand" id="winHand"></div>
+    <div class="win-stats" id="winStats"></div>
+    <div class="win-actions">
+      <button class="btn ghost" id="winReplay">重练这副 <kbd>R</kbd></button>
+      <button class="btn primary" id="winNext">下一局 <kbd>Space</kbd></button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

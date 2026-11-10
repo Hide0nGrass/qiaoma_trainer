@@ -1,0 +1,7 @@
+{
+  "baseUrl": "http://127.0.0.1:3456",
+  "apiKey": "在这里填你的 key",
+  "model": "deepseek-flash",
+  "maxTokens": 140,
+  "timeoutMs": 20000
+}
