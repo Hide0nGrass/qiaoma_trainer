@@ -113,7 +113,11 @@ export function readRound(sc, samples = READ_SAMPLES) {
   });
   const rows = dangerTable(read, sc.visible);
   const rank = new Map(rows.map((r, i) => [r.tile, i + 1]));
-  return { read, rows, rank, p: read.p, topK: DANGER_TOPK };
+  // inferWaits 的 p 是按「每手样本有几个等待种数」归一的，27 种加起来约 1.9；
+  // 显示成「概率」之前再归一一次，否则单张会虚高到 18%。
+  const tot = rows.reduce((a, r) => a + r.p, 0) || 1;
+  const p = new Map(rows.map((r) => [r.tile, r.p / tot]));
+  return { read, rows, rank, p, topK: DANGER_TOPK };
 }
 
 const pct = (x) => `${Math.round((x || 0) * 100)}%`;

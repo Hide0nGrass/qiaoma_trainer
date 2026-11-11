@@ -29,7 +29,7 @@ const inf = readRound(sc, 120);
 const ranks = [...inf.rank.values()].sort((a, b) => a - b);
 check('排名覆盖 1..27', ranks.length === 27 && ranks.every((v, i) => v === i + 1), String(ranks.length));
 const sumP = [...inf.p.values()].reduce((a, b) => a + b, 0);
-check('概率之和为正', sumP > 0.3 && sumP < 6, sumP.toFixed(3));
+check('概率之和归一为 1', Math.abs(sumP - 1) < 0.01, sumP.toFixed(3));
 
 // 区分度：真听张在前 5 名的比例应当高于真安全牌（独立发牌后约 2 倍）
 let hitTop = 0, nTop = 0, hitRest = 0, nRest = 0;
