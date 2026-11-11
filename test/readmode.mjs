@@ -98,7 +98,7 @@ if (hitDanger) {
   check('危险牌答「安全」→ 点炮', s5.state === 'over' && s5.result === 'deal', `${s5.state}/${s5.result}`);
   check('点炮后翻开他的牌', s5.faces === 13, String(s5.faces));
   check('点炮后按钮变「下一局」', s5.nextShown && /下一局/.test(s5.nextText), s5.nextText);
-  check('点炮反馈讲原因', /只等/.test(s5.fb) && /荣和/.test(s5.fb), s5.fb.slice(0, 46));
+  check('点炮反馈讲原因', /等的就是/.test(s5.fb) && /荣和/.test(s5.fb), s5.fb.slice(0, 46));
   await c.evaluate("document.getElementById('nextQ').click(); 1");
 } else {
   check('危险牌答「安全」→ 点炮', true, 'skip');

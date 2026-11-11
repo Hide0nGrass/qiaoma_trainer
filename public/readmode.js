@@ -24,6 +24,35 @@ function counts(arr) {
   return c;
 }
 
+const SUITS = ['万子', '筒子', '条子'];
+const suitOf = (t) => Math.floor(t / 9);
+
+/**
+ * 从「他的牌河」读线索。hard = 能证明的（現物 / 筋）；soft = 倾向性的（花色分布）。
+ */
+function riverClues(sc, tile) {
+  const seen = counts(sc.discards);
+  const hard = [];
+  const soft = [];
+  if (seen[tile]) hard.push(`他自己打过这张（現物${seen[tile] > 1 ? `×${seen[tile]}` : ''}）`);
+
+  const s = suitOf(tile);
+  const sameSuit = (t) => t >= 0 && t < KINDS && suitOf(t) === s;
+  if (sameSuit(tile - 3) && seen[tile - 3]) hard.push(`${tileName(tile - 3)} 是他的筋`);
+  else if (sameSuit(tile + 3) && seen[tile + 3]) hard.push(`${tileName(tile + 3)} 是他的筋`);
+
+  if (sc.discards.length >= 5 && (seen[tile] || 0) === 0) {
+    const bySuit = [0, 0, 0];
+    for (const t of sc.discards) bySuit[suitOf(t)]++;
+    const mine = bySuit[s];
+    const max = Math.max(...bySuit);
+    if (mine === max && mine >= 3) soft.push(`他打得最多的是${SUITS[s]}（${mine}/${sc.discards.length} 张）`);
+    else if (mine === 0) soft.push(`他一张${SUITS[s]}都没打过`);
+    else if (max >= 5 && mine < max) soft.push(`${SUITS[bySuit.indexOf(max)]}打得最多，${SUITS[s]}很少碰`);
+  }
+  return { hard, soft };
+}
+
 /** 造一局：已敲的对手 + 一串待打的牌（一半危险一半安全） */
 export function makeRound(seed) {
   const sim = simulateRound(seed, MAX_TURNS);
@@ -187,7 +216,9 @@ export function createReadMode(els, { toast } = {}) {
     els.knock.textContent = `他第 ${sc.knockTurn} 手敲`;
     els.rate.textContent = `本局 ${R.qi} / ${MAX_Q} · 连对 ${R.streak}` +
       (R.cleared ? ` · 已逃 ${R.cleared} 局` : '');
-    els.tag.textContent = shown ? `他听 ${sc.waits.map(tileName).join(' / ')}` : '已敲 · 手牌冻结';
+    els.tag.innerHTML = shown
+      ? `<b>他听 ${sc.waits.map(tileName).join(' / ')}</b>`
+      : '<b>已敲 · 手牌冻结</b> · 本地引擎判定，不经过 AI';
 
     let q = '';
     if (R.state === 'question') q = '这张牌打出去，危不危险？';
@@ -212,25 +243,34 @@ export function createReadMode(els, { toast } = {}) {
     const conservative = R.result === 'conservative';
     const waits = sc.waits.map(tileName).join(' / ');
     const q = tileName(R.dealtTile);
+    const clues = riverClues(sc, R.dealtTile);
+    const hardBit = clues.hard.length ? `${clues.hard.join('、')}。` : '';
+
+    // 他剩下那一组是什么形——只知道「形 + 等几种」，不知道具体牌
+    const groups = hisGroups(sc);
+    const waitGrp = groups.find((g) => g.wait);
+    const shapeRaw = waitGrp ? waitGrp.shape : '';
+    const shape = shapeRaw === '孤张' ? '单吊' : shapeRaw === '对子' ? '双碰' : shapeRaw;
+    const k = sc.waits.length;
+    const shapeBit = shape ? `${shape}，等 ${k} 种牌` : '';
 
     let why;
     if (conservative) {
-      why = `这张其实是安全的（不在他等的牌里），你白白扣了一张——没点炮，但连对断了。`;
+      why = `这张其实是安全的（${shapeBit ? `补不上他${shapeBit}` : '不在他的听张里'}）。${hardBit}你白白扣了一张——没点炮，但连对断了。`;
     } else if (R.state === 'over') {
-      const groups = hisGroups(sc);
-      const waitGrp = groups.find((g) => g.wait);
-      const grpName = waitGrp ? waitGrp.tiles.map(tileName).join('') : '';
-      const grpShape = waitGrp ? waitGrp.shape : '';
       why = R.danger
-        ? `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；${q} 正好补进这一组。`
-        : `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；${q} 补不上任何一组。`;
+        ? `他等的就是 <b>${waits}</b>（${shape}）；${q} 正好补上。${hardBit}`
+        : `他等的就是 <b>${waits}</b>（${shape}）；${q} 补不上。${hardBit}`;
+    } else if (R.danger) {
+      why = `${q} 正好补进他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}——这张出去就是炮。${hardBit}`;
     } else {
-      // 进行中不报听张，留给你自己读
-      why = R.danger ? `${q} 确实在他等的牌里，扣下。` : `${q} 不在他等的牌里，可以打。`;
+      why = `${q} 补不上他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}，可以打。${hardBit}`;
     }
-    const note = sc.discards.includes(R.dealtTile)
-      ? `顺带：这张他自己打过（現物）——敲麻没有振听，理论上还能等，但实战里几乎不会。`
-      : '';
+    const note = [
+      clues.soft.length ? `牌河上：${clues.soft.join('；')}。` : '',
+      sc.discards.includes(R.dealtTile)
+        ? '注：敲麻没有振听，現物理论上仍可能点炮——只是实战概率极低。' : '',
+    ].filter(Boolean).join(' ');
 
     els.fb.hidden = false;
     els.fb.className = `feedback ${correct ? 'ok' : 'bad'}`;

@@ -104,7 +104,7 @@
         <span class="sep"></span>
         <span id="rdRate"></span>
         <span class="flex1"></span>
-        <span class="opp-tag" id="rdTag">已敲 · 手牌冻结</span>
+        <span class="opp-tag" id="rdTag"><b>已敲 · 手牌冻结</b> · 本地引擎判定，不经过 AI</span>
       </div>
 
       <div class="opp-panel">
@@ -180,6 +180,12 @@
       <div class="rule">
         <h3>快捷键</h3>
         <p><kbd>空格</kbd> 新牌局 · <kbd>R</kbd> 重练 · <kbd>Z</kbd> 后退一步 · <kbd>L</kbd> 历史 · <kbd>M</kbd> 错题本 · <kbd>F</kbd> 收藏 · <kbd>G</kbd> 分组开关 · <kbd>V</kbd> 悬停提示开关 · <kbd>H</kbd> 提示 · <kbd>A</kbd> 讲逻辑 · <kbd>Enter</kbd> 就这样打</p>
+      </div>
+      <div class="rule">
+        <h3>摇铃（读牌）</h3>
+        <p>左边切到 <b>摇铃</b>：给你一个<b>已经敲了</b>的对手——他的 13 张扣着，牌河摊开。每次只发一张牌问「打出去危不危险」，答对就继续下一张，答错（而这张正是他的听张）直接点炮、本局结束；答错但其实是安全的，只是白扣一张、连对断，不点炮。撑过 12 张算逃掉。</p>
+        <p>每题都会讲<b>为什么</b>：先看你出的这张能不能补进他那一组（他剩下的一组是什么形、等几种），再看牌河——他打过的同牌（現物）、他的筋、哪一门他丢得最多。<b>全部由本地引擎算</b>（<code>engine.mjs</code> 拆他的牌型、<code>opponent.mjs</code> 模拟他的摸打），<b>不经过 AI</b>，所以是标准答案，不是模型猜的。</p>
+        <p class="dim">局中不报他的具体听张——一报后面的题就开卷了。想知道他到底等哪几张，等本局结束（点炮或逃掉）时会翻开他的 13 张。</p>
       </div>
       <div class="rule">
         <h3>历史</h3>
