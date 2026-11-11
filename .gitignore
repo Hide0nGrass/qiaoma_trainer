@@ -16,3 +16,7 @@ shot-*.png
 Thumbs.db
 .vscode/
 .idea/
+
+# 临时脚本
+test/tmp*.mjs
+shot-*.png
