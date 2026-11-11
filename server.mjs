@@ -126,6 +126,65 @@ function sse(res, obj) {
   }
 }
 
+/* ---------------- 摇铃（读牌）点评 ---------------- */
+const READ_SYSTEM_PROMPT = [
+  '你是"敲麻"（108张：万筒条各1-9，无字牌）的读牌教练。',
+  '用户在一个已经敲牌（听牌）的对手面前，判断某一张牌打出去会不会点炮。',
+  '系统已经用本地引擎算好了：这张牌是不是他的听张、他等的那一组是什么形、等几种牌，',
+  '以及他的牌河能读出哪些线索。你要做的是把这些事实讲成一堂小课，教他"以后怎么看"。',
+  '输出两句、总共不超过 80 个汉字：',
+  '第一句说这一手该怎么读（他缺的是哪一类的牌 / 牌河上哪条线索支持这个判断）；',
+  '第二句说下次遇到同类局面该看什么。',
+  '只用给出的牌河和形，不要臆造他手里的牌；不要复述"对/错"这种结论词；不要列表、不要客套。',
+  '形名（两面 / 嵌张 / 边张 / 单吊 / 双碰）必须照抄题目给的写法，不要改写成别的形，也不要推断更细的搭子类型。',
+  '牌河里有"筋"时可以说"某张是他的筋"；没有线索时直接说"这手牌河上看不出来"，不要编。',
+  '重要：敲麻没有振听（只有漏胡），他打过的牌仍然可能是他的听张。所以"現物"只能当低概率线索，',
+  '禁止说"他不会要自己打过的牌"这类话；如果题目判定这张是危险的現物，必须承认它确实是炮。',
+  '局中不要报出他的具体听张（题目里没给时就更不能编）。',
+].join('');
+
+function buildReadPrompt(p) {
+  const lines = [
+    `他已经敲牌（第 ${p.knockTurn} 手敲），牌河（按打出顺序）：${p.discardsText || '（空）'}`,
+    `他等的那一组：${p.shape || '未知'}，等 ${p.waitKinds} 种牌`,
+    p.waitsText ? `他的听张：${p.waitsText}` : '',
+    `你手上这张要打出去的是：${p.tile}`,
+    `本地引擎判定：${p.danger ? '危险（正好是他的听张）' : '安全（不在他的听张里）'}`,
+    `牌河线索：${p.cluesText || '没有能证明的线索'}`,
+    p.softText ? `倾向性观察：${p.softText}` : '',
+    `本局结果：${p.resultText || '还在继续'}`,
+    p.danger
+      ? '请讲：为什么这张是炮，牌河上本来能不能看出来。'
+      : '请讲：为什么这张安全，牌河上该怎么确认。',
+  ].filter(Boolean);
+  return lines.join(String.fromCharCode(10));
+}
+
+async function handleReadCoach(req, res) {
+  let body;
+  try {
+    body = await readJson(req, 64 * 1024);
+  } catch {
+    res.writeHead(400); res.end('bad request'); return;
+  }
+  const clean = (v, n = 200) => String(v ?? '').slice(0, n);
+  const payload = {
+    knockTurn: Number(body.knockTurn) || 0,
+    discardsText: clean(body.discardsText, 200),
+    shape: clean(body.shape, 8),
+    waitKinds: Number(body.waitKinds) || 0,
+    waitsText: clean(body.waitsText, 40),
+    tile: clean(body.tile, 8),
+    danger: !!body.danger,
+    cluesText: clean(body.cluesText, 200),
+    softText: clean(body.softText, 160),
+    resultText: clean(body.resultText, 20),
+    fallback: clean(body.fallback, 400),
+  };
+  const userPrompt = buildReadPrompt(payload);
+  await runCoach(req, res, READ_SYSTEM_PROMPT, userPrompt, payload.fallback);
+}
+
 async function handleCoach(req, res) {
   let body;
   try {
@@ -153,6 +212,11 @@ async function handleCoach(req, res) {
     fallback: clean(body.fallback, 400),
   };
 
+  const userPrompt = buildUserPrompt(payload);
+  await runCoach(req, res, SYSTEM_PROMPT, userPrompt, payload.fallback);
+}
+
+async function runCoach(req, res, system, userPrompt, fallback) {
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache, no-transform',
@@ -161,7 +225,6 @@ async function handleCoach(req, res) {
   });
   res.on('error', () => { /* 断连时不崩 */ });
 
-  const userPrompt = buildUserPrompt(payload);
   const cached = memo.get(userPrompt);
   if (cached) {
     sse(res, { t: cached, cached: true });
@@ -171,7 +234,7 @@ async function handleCoach(req, res) {
   }
 
   if (!CFG.apiKey) {
-    sse(res, { t: payload.fallback, fallback: true });
+    sse(res, { t: fallback, fallback: true });
     sse(res, { done: true, ms: 0 });
     res.end();
     return;
@@ -200,7 +263,7 @@ async function handleCoach(req, res) {
         temperature: 0.3,
         stream: true,
         thinking: { type: 'disabled' },
-        system: SYSTEM_PROMPT,
+        system,
         messages: [{ role: 'user', content: userPrompt }],
       }),
     });
@@ -242,7 +305,7 @@ async function handleCoach(req, res) {
     }
   } catch (err) {
     if (!closed) {
-      sse(res, { t: full ? '' : payload.fallback, fallback: !full, error: String(err?.message || err) });
+      sse(res, { t: full ? '' : fallback, fallback: !full, error: String(err?.message || err) });
       sse(res, { done: true, ms: Date.now() - started, failed: true });
       res.end();
     }
@@ -278,6 +341,10 @@ process.on('unhandledRejection', (err) => {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || HOST}`);
+  if (req.method === 'POST' && url.pathname === '/api/read') {
+    handleReadCoach(req, res);
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/coach') {
     handleCoach(req, res).catch(() => { try { res.end(); } catch {} });
     return;

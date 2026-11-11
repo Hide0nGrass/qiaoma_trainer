@@ -131,6 +131,75 @@ export function createReadMode(els, { toast } = {}) {
     } catch { /* ignore */ }
   }
 
+  /* ---------- AI（DeepSeek）讲解 ---------- */
+
+  const coach = { seq: 0, abort: null, on: true, calls: 0, off: false };
+
+  async function askReadCoach(payload) {
+    const my = ++coach.seq;
+    coach.calls++;
+    if (coach.abort) coach.abort.abort();
+    const ctrl = new AbortController();
+    coach.abort = ctrl;
+    const t0 = performance.now();
+    let firstMs = 0;
+    let doneSeen = false;
+    const guard = setTimeout(() => { if (my === coach.seq && !doneSeen) ctrl.abort(); }, 12000);
+    try {
+      const res = await fetch('/api/read', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) throw new Error('http ' + res.status);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let ai = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done || my !== coach.seq) break;
+        buf += dec.decode(value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf('\n\n')) >= 0) {
+          const packet = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const line = packet.split('\n').find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (ev.t) {
+            if (!firstMs) firstMs = Math.round(performance.now() - t0);
+            ai += ev.t;
+            if (my === coach.seq) paintAi(ai);
+          }
+          if (ev.done) {
+            doneSeen = true;
+            paintAi(ai, { firstMs, totalMs: Math.round(performance.now() - t0), cached: ev.cached, failed: ev.failed });
+          }
+        }
+      }
+      if (!doneSeen && my === coach.seq) paintAi(ai, { firstMs, totalMs: Math.round(performance.now() - t0), failed: true });
+    } catch {
+      if (my === coach.seq) paintAi('', { failed: true });
+    } finally {
+      clearTimeout(guard);
+    }
+  }
+
+  function paintAi(text, meta = {}) {
+    if (!els.fbAi) return;
+    if (!text) {
+      els.fbAi.hidden = true;
+      els.fbAi.textContent = '';
+      return;
+    }
+    els.fbAi.hidden = false;
+    els.fbAi.textContent = text.trim();
+    if (meta.failed) els.fbAi.textContent += '（AI 未接通，下面是本地引擎的结论）';
+  }
+
   /* ---------- 渲染 ---------- */
 
   function tileEl(tile, { small = false, mark = false } = {}) {
@@ -218,7 +287,7 @@ export function createReadMode(els, { toast } = {}) {
       (R.cleared ? ` · 已逃 ${R.cleared} 局` : '');
     els.tag.innerHTML = shown
       ? `<b>他听 ${sc.waits.map(tileName).join(' / ')}</b>`
-      : '<b>已敲 · 手牌冻结</b> · 本地引擎判定，不经过 AI';
+      : '<b>已敲 · 手牌冻结</b> · 判定用本地引擎 · 讲解走 DeepSeek';
 
     let q = '';
     if (R.state === 'question') q = '这张牌打出去，危不危险？';
@@ -272,16 +341,41 @@ export function createReadMode(els, { toast } = {}) {
         ? '注：敲麻没有振听，現物理论上仍可能点炮——只是实战概率极低。' : '',
     ].filter(Boolean).join(' ');
 
+    const plainWhy = why.replace(/<[^>]+>/g, '');
     els.fb.hidden = false;
     els.fb.className = `feedback ${correct ? 'ok' : 'bad'}`;
     els.fb.innerHTML =
       `<span class="fb-mark">${correct ? '对' : conservative ? '保守' : '错'}</span>` +
-      `<span class="fb-body">${why}` +
+      `<span class="fb-body">` +
+      `<span class="fb-ai" hidden></span>` +
+      `<span class="fb-local">${why}` +
       (R.state === 'over' && R.result === 'deal'
         ? ' 这一张打出去他就荣和了，本局结束。'
         : R.state === 'over' ? ' 这一局他没等到牌，你逃掉了。' : '') +
+      `</span>` +
       `${note ? `<span class="fb-note">${note}</span>` : ''}</span>` +
       `<span class="fb-score">连对 ${R.streak} · 最长 ${R.best}</span>`;
+
+    // AI 讲解：默认走 DeepSeek；没配 key 时服务端会回退到下面这段本地结论
+    els.fbAi = els.fb.querySelector('.fb-ai');
+    if (els.fbAi) { els.fbAi.hidden = true; els.fbAi.textContent = ''; }
+    if (coach.on) {
+      askReadCoach({
+        knockTurn: sc.knockTurn,
+        discardsText: sc.discards.map(tileName).join(' '),
+        shape,
+        waitKinds: k,
+        waitsText: R.state === 'over' ? sc.waits.map(tileName).join(' / ') : '',
+        tile: q,
+        danger: R.danger,
+        cluesText: clues.hard.join('、'),
+        softText: clues.soft.join('；'),
+        resultText: R.state === 'over'
+          ? (R.result === 'deal' ? '他荣和，本局结束' : '他没等到，本局结束')
+          : conservative ? '没点炮，但连对断了' : '还在继续',
+        fallback: plainWhy,
+      });
+    }
   }
 
   /* ---------- 流程 ---------- */

@@ -1329,3 +1329,18 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
   .opp-hand { gap: 4px; }
   .opp-river, .my-river { gap: 3px; }
 }
+
+.fb-ai { display: block; color: var(--ink); }
+.fb-ai[hidden] { display: none !important; }
+.fb-ai + .fb-local { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
+.fb-local { display: block; }
+
+.feedback .fb-body { max-width: 82ch; }
+.fb-ai { font-size: 13.5px; line-height: 1.55; }
+.fb-local { font-size: 11.5px; }
+
+@media (max-width: 560px) {
+  .feedback { flex-wrap: wrap; }
+  .feedback .fb-body { max-width: 100%; }
+  .feedback .fb-score { flex: 1 1 100%; text-align: right; margin-top: 2px; }
+}
