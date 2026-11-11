@@ -1,19 +1,22 @@
-// 摇铃练习：他敲牌之后的读牌二选一。
+// 摇铃练习：他敲牌之后，你一张一张地出牌，判断会不会点炮。
 //
-// 每题：模拟出一个「已经敲了」的对手（牌河 + 冻结的 13 张），发我 13 张手牌，
-// 指定其中一张问「打这张出去，危不危险」，我点危险 / 不危险，立刻判分并揭底。
+// 一「局」= 一个已经敲了的对手（牌河 + 冻结的 13 张）。你手上有一串还没打的牌，
+// 每次只把下一张拿出来问「打这张出去，危不危险」：
+//   答对  → 这张按你的判断处理（说安全就打出去进你的牌河，说危险就扣下），继续下一张
+//   答错  → 他荣和，本局结束，点炮那张进你的牌河
+// 撑过 MAX_Q 张没点炮 = 本局逃掉。之后才换新的一局。
 //
-// 题目是平衡的：一半来自他真正的听张（危险），一半不在他的听张里（不危险），
+// 题目是平衡的：每局的牌串里一半是他的听张（危险）、一半不在听张里（安全），
 // 否则一路点「不危险」也能有八成正确率，练不出东西。
 import { decompose, tileName } from '../engine.mjs';
-import { mulberry32, shuffle, newDeck } from '../opponent.mjs';
-import { simulateRound } from '../opponent.mjs';
+import { mulberry32, shuffle, simulateRound } from '../opponent.mjs';
 import { faceSVG } from './tiles.js';
 
 const KINDS = 27;
 const MIN_RIVER = 5;   // 至少 5 张弃牌才出题，否则等于让玩家猜
 const MAX_TURNS = 16;  // simulateRound 的上限：他最多摸 16 手就要听牌
-const STAT_KEY = 'qiaoma.readquiz.v1';
+const MAX_Q = 12;      // 撑过 12 张算「逃掉」
+const STAT_KEY = 'qiaoma.readquiz.v2';
 
 function counts(arr) {
   const c = new Array(KINDS).fill(0);
@@ -21,72 +24,66 @@ function counts(arr) {
   return c;
 }
 
-/** 用种子造一道题；失败返回 null（那局他没敲） */
-export function makeScenario(seed) {
+/** 造一局：已敲的对手 + 一串待打的牌（一半危险一半安全） */
+export function makeRound(seed) {
   const sim = simulateRound(seed, MAX_TURNS);
   if (sim.knockAt < MIN_RIVER || !sim.waits?.length || !sim.frozenHand) return null;
 
   const rnd = mulberry32((seed * 2654435761) >>> 0);
   const discards = sim.path.map((x) => x.discard);
-  const visible = counts(discards);
-  const waitsTiles = sim.waits.map((w) => w.tile);
-  const isWait = new Set(waitsTiles);
+  const isWait = new Set(sim.waits.map((w) => w.tile));
 
-  // 他的手牌 + 牌河是「已知」的，牌池里剩下的才是能发给我的
+  // 他手上的 + 他打出的，都不是我能摸到的
   const used = counts([...sim.frozenHand, ...discards]);
+  const avail = (t) => 4 - used[t];
 
-  const pickFrom = (pool) => (pool.length ? pool[Math.floor(rnd() * pool.length)] : null);
+  // 危险池 / 安全池，各取一半
+  const dangerPool = [];
+  for (let t = 0; t < KINDS; t++) if (isWait.has(t)) for (let i = 0; i < avail(t); i++) dangerPool.push(t);
+  const safePool = [];
+  for (let t = 0; t < KINDS; t++) if (!isWait.has(t)) for (let i = 0; i < avail(t); i++) safePool.push(t);
 
-  // 一半问「他真在等的牌」，一半问「他不要的牌」
-  const wantDanger = rnd() < 0.5;
-  let q = null;
-  if (wantDanger) {
-    const pool = [];
-    for (const t of waitsTiles) if (used[t] < 4) pool.push(t);
-    q = pickFrom(pool);
-  }
-  if (q === null) {
-    const pool = [];
-    for (let t = 0; t < KINDS; t++) if (!isWait.has(t) && used[t] < 4) pool.push(t);
-    q = pickFrom(pool);
-  }
-  if (q === null) return null;
+  shuffle(dangerPool, rnd);
+  shuffle(safePool, rnd);
 
-  // 剩下的牌里发 12 张给我，凑成 13 张
-  const bag = [];
-  for (let t = 0; t < KINDS; t++) {
-    const n = 4 - used[t] - (t === q ? 1 : 0);
-    for (let i = 0; i < n; i++) bag.push(t);
+  const half = Math.floor(MAX_Q / 2);
+  const nd = Math.min(half, dangerPool.length);
+  const ns = Math.min(MAX_Q - nd, safePool.length);
+  const bag = [...dangerPool.slice(0, nd), ...safePool.slice(0, ns)];
+  // 一边不够时用另一边补
+  let bi = nd, si = ns;
+  while (bag.length < MAX_Q && (bi < dangerPool.length || si < safePool.length)) {
+    bag.push(bi < dangerPool.length ? dangerPool[bi++] : safePool[si++]);
   }
   shuffle(bag, rnd);
-  const hand = [q, ...bag.slice(0, 12)].sort((a, b) => a - b);
 
   return {
     seed,
-    hand,
-    q,
-    qIdx: hand.indexOf(q),
-    danger: isWait.has(q),
+    bag,
     discards,
     knockTurn: sim.path.length,
     frozen: sim.frozenHand,
-    waits: waitsTiles,
-    visible: counts(hand).map((n, t) => Math.min(4, n + visible[t])),
+    waits: sim.waits.map((w) => w.tile),
+    visible: used,
   };
 }
 
 export function createReadMode(els, { toast } = {}) {
   const R = {
     on: false,
-    no: 0,
-    right: 0,
-    total: 0,
+    roundNo: 0,
+    scenario: null,
+    state: 'question',   // question | revealed | over
+    qi: 0,               // 本局第几张
+    answer: null,
+    result: null,        // 'clear' | 'deal'
+    dealtTile: -1,
+    myRiver: [],
     streak: 0,
     best: 0,
-    scenario: null,
-    state: 'idle',     // idle | question | revealed
-    answer: null,
-    showHand: false,
+    total: 0,
+    right: 0,
+    cleared: 0,
   };
 
   try {
@@ -94,22 +91,24 @@ export function createReadMode(els, { toast } = {}) {
     R.total = saved.total | 0;
     R.right = saved.right | 0;
     R.best = saved.best | 0;
+    R.cleared = saved.cleared | 0;
   } catch { /* 隐私模式 */ }
 
   function saveStats() {
     try {
-      localStorage.setItem(STAT_KEY, JSON.stringify({ total: R.total, right: R.right, best: R.best }));
+      localStorage.setItem(STAT_KEY, JSON.stringify({
+        total: R.total, right: R.right, best: R.best, cleared: R.cleared,
+      }));
     } catch { /* ignore */ }
   }
 
   /* ---------- 渲染 ---------- */
 
-  function tileEl(tile, { small = false, mark = false, idx = -1 } = {}) {
+  function tileEl(tile, { small = false, mark = false } = {}) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'tile' + (small ? ' sm' : '') + (mark ? ' q' : '');
     b.dataset.tile = String(tile);
-    if (idx >= 0) b.dataset.idx = String(idx);
     b.setAttribute('aria-label', tileName(tile));
     b.innerHTML = faceSVG(tile);
     return b;
@@ -127,22 +126,16 @@ export function createReadMode(els, { toast } = {}) {
     const left = counts(sc.frozen);
     const take = (tiles) => {
       const out = [];
-      for (const t of tiles) {
-        if (left[t] > 0) { left[t]--; out.push(t); }
-      }
+      for (const t of tiles) if (left[t] > 0) { left[t]--; out.push(t); }
       return out;
     };
-    const blocks = decompose(sc.frozen).blocks;
     const groups = [];
-    for (const b of blocks) {
+    for (const b of decompose(sc.frozen).blocks) {
       const tiles = take(b.tiles);
       if (!tiles.length) continue;
-      const wait =
-        b.kind === 'partial' ||
-        (b.kind === 'single' && sc.waits.includes(tiles[0]));
+      const wait = b.kind === 'partial' || (b.kind === 'single' && sc.waits.includes(tiles[0]));
       groups.push({ tiles, shape: b.shape, wait });
     }
-    // 兜底：没被任何块吃掉的牌单独列出
     const rest = [];
     for (let t = 0; t < KINDS; t++) for (let i = 0; i < left[t]; i++) rest.push(t);
     if (rest.length) groups.push({ tiles: rest, shape: '', wait: false });
@@ -152,11 +145,10 @@ export function createReadMode(els, { toast } = {}) {
   function paint() {
     const sc = R.scenario;
     if (!sc) return;
-    const revealed = R.state === 'revealed';
+    const shown = R.state === 'over';   // 只有本局结束才翻牌，否则后面的题被剧透
 
-    // 他的手牌：答完才翻开（翻开时按块分组，等待的那组描金）
     const his = document.createDocumentFragment();
-    if (revealed) {
+    if (shown) {
       for (const g of hisGroups(sc)) {
         const grp = document.createElement('span');
         grp.className = 'opp-grp' + (g.wait ? ' wait' : '');
@@ -169,7 +161,7 @@ export function createReadMode(els, { toast } = {}) {
     }
     els.oppHand.replaceChildren(his);
 
-    // 牌河 + 敲的标记
+    // 他的牌河 + 敲的标记
     const riv = [];
     sc.discards.forEach((t, i) => {
       riv.push(tileEl(t, { small: true }));
@@ -183,108 +175,152 @@ export function createReadMode(els, { toast } = {}) {
     });
     els.oppRiver.replaceChildren(...riv);
 
-    // 我的手牌，问题牌描金
-    const frag = document.createDocumentFragment();
-    sc.hand.forEach((t, i) => {
-      const el = tileEl(t, { mark: i === sc.qIdx });
-      if (i === sc.qIdx) el.title = '问的就是这张';
-      frag.appendChild(el);
-    });
-    els.hand.replaceChildren(frag);
+    // 我的牌河：打出去的那些
+    els.myRiver.replaceChildren(...R.myRiver.map((t) => tileEl(t, { small: true })));
 
-    els.no.textContent = `第 ${R.no} 题`;
+    // 只显示要打的那一张
+    els.quizTile.replaceChildren(
+      R.dealtTile >= 0 ? tileEl(R.dealtTile) : document.createTextNode(''),
+    );
+
+    els.no.textContent = `第 ${R.roundNo} 局`;
     els.knock.textContent = `他第 ${sc.knockTurn} 手敲`;
-    els.rate.textContent = R.total ? `正确 ${R.right}/${R.total} · ${Math.round((R.right / R.total) * 100)}%` : '正确 —';
-    els.tag.textContent = revealed ? `他听 ${sc.waits.map(tileName).join(' / ')}` : '已敲 · 手牌冻结';
-    els.tag.classList.toggle('knocked', true);
+    els.rate.textContent = `本局 ${R.qi} / ${MAX_Q} · 连对 ${R.streak}` +
+      (R.cleared ? ` · 已逃 ${R.cleared} 局` : '');
+    els.tag.textContent = shown ? `他听 ${sc.waits.map(tileName).join(' / ')}` : '已敲 · 手牌冻结';
 
-    if (els.quizQ) {
-      els.quizQ.innerHTML = revealed
-        ? `打 <b>${tileName(sc.q)}</b> 出去${sc.danger ? '会点炮' : '是安全的'}`
-        : `打 <b>${tileName(sc.q)}</b> 出去，危不危险？`;
-    }
-    els.ansDanger.hidden = revealed;
-    els.ansSafe.hidden = revealed;
-    els.nextQ.hidden = !revealed;
+    let q = '';
+    if (R.state === 'question') q = '这张牌打出去，危不危险？';
+    else if (R.state === 'revealed') q = R.danger ? '他确实在等这张' : '这张是安全的';
+    else q = R.result === 'deal' ? '点炮了' : `撑过 ${MAX_Q} 张，这局逃掉了`;
+    els.quizQ.textContent = q;
+
+    const over = R.state === 'over';
+    els.ansDanger.hidden = R.state !== 'question';
+    els.ansSafe.hidden = R.state !== 'question';
+    els.nextQ.hidden = !over;
     els.ansDanger.classList.toggle('picked', R.answer === 'danger');
     els.ansSafe.classList.toggle('picked', R.answer === 'safe');
   }
 
   function paintFeedback() {
     const sc = R.scenario;
-    const correct = (R.answer === 'danger') === sc.danger;
-    const cls = correct ? 'ok' : 'bad';
+    const correct = (R.answer === 'danger') === R.danger;
+    const conservative = R.result === 'conservative';
     const waits = sc.waits.map(tileName).join(' / ');
-    const q = tileName(sc.q);
+    const q = tileName(R.dealtTile);
 
-    // 用他真实的牌型讲清楚「为什么」：他把 4 组面子做完了，只剩一组在等
-    const groups = hisGroups(sc);
-    const waitGrp = groups.find((g) => g.wait);
-    const grpName = waitGrp ? waitGrp.tiles.map(tileName).join('') : '';
-    const grpShape = waitGrp ? waitGrp.shape : '';
-    const why = sc.danger
-      ? `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；你打的 ${q} 正好补进这一组。`
-      : `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；你打的 ${q} 补不上任何一组，进不来。`;
-    const meldN = groups.filter((g) => g.shape === '顺子' || g.shape === '刻子').length;
-    const pairN = groups.filter((g) => g.shape === '将').length;
-    const note = sc.discards.includes(sc.q)
+    let why;
+    if (conservative) {
+      why = `这张其实是安全的（不在他等的牌里），你白白扣了一张——没点炮，但连对断了。`;
+    } else if (R.state === 'over') {
+      const groups = hisGroups(sc);
+      const waitGrp = groups.find((g) => g.wait);
+      const grpName = waitGrp ? waitGrp.tiles.map(tileName).join('') : '';
+      const grpShape = waitGrp ? waitGrp.shape : '';
+      why = R.danger
+        ? `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；${q} 正好补进这一组。`
+        : `他的 <b>${grpName}</b> 是${grpShape}，只等 <b>${waits}</b>；${q} 补不上任何一组。`;
+    } else {
+      // 进行中不报听张，留给你自己读
+      why = R.danger ? `${q} 确实在他等的牌里，扣下。` : `${q} 不在他等的牌里，可以打。`;
+    }
+    const note = sc.discards.includes(R.dealtTile)
       ? `顺带：这张他自己打过（現物）——敲麻没有振听，理论上还能等，但实战里几乎不会。`
       : '';
 
     els.fb.hidden = false;
-    els.fb.className = `feedback ${cls}`;
+    els.fb.className = `feedback ${correct ? 'ok' : 'bad'}`;
     els.fb.innerHTML =
-      `<span class="fb-mark">${correct ? '对' : '错'}</span>` +
-      `<span class="fb-body">${sc.danger ? '他确实在等这张。' : '这张不在他的听张里。'}${why} ` +
-      `他第 ${sc.knockTurn} 手敲，${meldN} 个面子 + ${pairN} 对将都已成形，牌河 ${sc.discards.length} 张。` +
+      `<span class="fb-mark">${correct ? '对' : conservative ? '保守' : '错'}</span>` +
+      `<span class="fb-body">${why}` +
+      (R.state === 'over' && R.result === 'deal'
+        ? ' 这一张打出去他就荣和了，本局结束。'
+        : R.state === 'over' ? ' 这一局他没等到牌，你逃掉了。' : '') +
       `${note ? `<span class="fb-note">${note}</span>` : ''}</span>` +
       `<span class="fb-score">连对 ${R.streak} · 最长 ${R.best}</span>`;
   }
 
   /* ---------- 流程 ---------- */
 
-  function nextQuestion(seed) {
+  function startRound(seed) {
     let sc = null;
     let s = seed >>> 0;
-    for (let i = 0; i < 60 && !sc; i++) sc = makeScenario((s + i * 7919) >>> 0);
-    if (!sc) { toast?.('没造出题，再试一次'); return; }
+    for (let i = 0; i < 80 && !sc; i++) sc = makeRound((s + i * 7919) >>> 0);
+    if (!sc) { toast?.('没造出局，再试一次'); return; }
     R.scenario = sc;
+    R.roundNo++;
+    R.qi = 0;
     R.state = 'question';
     R.answer = null;
-    R.no++;
+    R.result = null;
+    R.myRiver = [];
+    R.dealtTile = sc.bag[0];
+    R.danger = sc.waits.includes(R.dealtTile);
     els.fb.hidden = true;
     paint();
   }
 
   function answer(choice) {
     if (R.state !== 'question') return;
-    const sc = R.scenario;
     R.answer = choice;
-    R.state = 'revealed';
-    const correct = (choice === 'danger') === sc.danger;
+    const correct = (choice === 'danger') === R.danger;
     R.total++;
+    R.qi++;
     if (correct) {
       R.right++;
       R.streak++;
       if (R.streak > R.best) R.best = R.streak;
+      // 说安全就真打出去，说危险就扣下
+      if (choice === 'safe') R.myRiver.push(R.dealtTile);
+      saveStats();
+      if (R.qi >= MAX_Q || R.qi >= R.scenario.bag.length) {
+        R.state = 'over';
+        R.result = 'clear';
+        R.cleared++;
+        saveStats();
+      } else {
+        R.state = 'revealed';
+      }
     } else {
       R.streak = 0;
+      R.myRiver.push(R.dealtTile);
+      if (R.danger) {
+        // 真危险却打了出去 —— 点炮，本局结束
+        R.state = 'over';
+        R.result = 'deal';
+      } else {
+        // 其实安全，只是你保守了：不算点炮，继续这一局
+        R.result = 'conservative';
+        R.state = 'revealed';
+      }
+      saveStats();
     }
-    saveStats();
     paint();
     paintFeedback();
+    if (R.state === 'revealed') {
+      // 答对后自动进下一张；按 1/2 也能直接抢先
+      R.timer = setTimeout(() => advance(), 900);
+    }
+  }
+
+  function advance() {
+    clearTimeout(R.timer);
+    if (R.state !== 'revealed') return;
+    if (R.qi >= R.scenario.bag.length) { R.state = 'over'; R.result = 'clear'; paint(); return; }
+    R.dealtTile = R.scenario.bag[R.qi];
+    R.danger = R.scenario.waits.includes(R.dealtTile);
+    R.state = 'question';
+    R.answer = null;
+    els.fb.hidden = true;
+    paint();
   }
 
   /* ---------- 事件 ---------- */
 
   els.ansDanger.addEventListener('click', () => answer('danger'));
   els.ansSafe.addEventListener('click', () => answer('safe'));
-  els.nextQ.addEventListener('click', () => nextQuestion((Math.random() * 0xffffffff) >>> 0));
-  els.hand.addEventListener('click', (e) => {
-    const el = e.target.closest('.tile');
-    if (!el) return;
-    if (Number(el.dataset.idx) === R.scenario?.qIdx) toast?.('问的就是这张，点下面的「危险 / 不危险」');
-  });
+  els.nextQ.addEventListener('click', () => startRound((Math.random() * 0xffffffff) >>> 0));
 
   return {
     get state() { return R; },
@@ -292,11 +328,15 @@ export function createReadMode(els, { toast } = {}) {
     enter() {
       R.on = true;
       els.area.hidden = false;
-      if (!R.scenario) nextQuestion((Math.random() * 0xffffffff) >>> 0);
+      if (!R.scenario) startRound((Math.random() * 0xffffffff) >>> 0);
     },
     leave() { R.on = false; els.area.hidden = true; },
-    next() { nextQuestion((Math.random() * 0xffffffff) >>> 0); },
+    next() {
+      if (R.state === 'over') startRound((Math.random() * 0xffffffff) >>> 0);
+      else advance();
+    },
     answer,
-    loadSeed(seed) { nextQuestion(seed); },
+    loadSeed(seed) { startRound(seed); },
+    MAX_Q,
   };
 }

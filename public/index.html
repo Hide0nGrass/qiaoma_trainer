@@ -98,11 +98,11 @@
 
     <section class="read-area" id="readArea" hidden>
       <div class="table-meta">
-        <span class="chip" id="rdNo">第 1 题</span>
+        <span class="chip" id="rdNo">第 1 局</span>
         <span class="sep"></span>
-        <span id="rdKnock">他第 16 手敲</span>
+        <span id="rdKnock"></span>
         <span class="sep"></span>
-        <span id="rdRate">正确 —</span>
+        <span id="rdRate"></span>
         <span class="flex1"></span>
         <span class="opp-tag" id="rdTag">已敲 · 手牌冻结</span>
       </div>
@@ -116,19 +116,22 @@
           <span class="opp-name">牌河</span>
           <div class="opp-river" id="rdOppRiver"></div>
         </div>
-      </div>
-
-      <div class="quiz">
-        <div class="quiz-q" id="quizQ"></div>
-        <div class="quiz-acts" id="quizActs">
-          <button class="btn" id="ansDanger"><kbd>1</kbd> 危险</button>
-          <button class="btn" id="ansSafe"><kbd>2</kbd> 不危险</button>
-          <button class="btn" id="nextQ" hidden>下一题 <kbd>Space</kbd></button>
+        <div class="opp-line">
+          <span class="opp-name">你打出</span>
+          <div class="opp-river" id="rdMyRiver"></div>
         </div>
       </div>
 
-      <div class="hand-wrap">
-        <div class="hand" id="rdHand"></div>
+      <div class="quiz">
+        <div class="quiz-tile" id="quizTile"></div>
+        <div class="quiz-side">
+          <div class="quiz-q" id="quizQ"></div>
+          <div class="quiz-acts">
+            <button class="btn" id="ansDanger"><kbd>1</kbd> 危险</button>
+            <button class="btn" id="ansSafe"><kbd>2</kbd> 不危险</button>
+            <button class="btn" id="nextQ" hidden>下一局 <kbd>Space</kbd></button>
+          </div>
+        </div>
       </div>
 
       <div class="feedback" id="rdFb" hidden></div>
