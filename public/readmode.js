@@ -18,7 +18,7 @@ const KINDS = 27;
 const MIN_RIVER = 5;   // 至少 5 张弃牌才出题，否则等于让玩家猜
 const MAX_TURNS = 16;  // simulateRound 的上限：他最多摸 16 手就要听牌
 const MAX_Q = 12;      // 撑过 12 张算「逃掉」
-const READ_SAMPLES = 240; // 推断采样数：约 230ms / 局，开局算一次，之后复用
+const READ_SAMPLES = 600; // 推断采样数：约 350ms / 局，开局算一次，之后复用（240 时 top-5 lift 1.83，600 时 1.99）
 const DANGER_TOPK = 5;    // 推断前 5 名算「牌河说危险」（top-5 的区分度约 2 倍于安全牌）
 const STAT_KEY = 'qiaoma.readquiz.v3';
 
@@ -96,6 +96,8 @@ export function makeRound(seed) {
     bag,
     hand,
     discards,
+    // 带摸切标记的弃牌序列，给 read.mjs 用（手切/摸切的信息量不一样）
+    discardsInfo: sim.path.map((p) => ({ tile: p.discard, tsumogiri: !!p.tsumogiri })),
     knockTurn: sim.path.length,
     frozen: sim.frozenHand,
     waits: sim.waits.map((w) => w.tile),
@@ -106,10 +108,11 @@ export function makeRound(seed) {
 /** 只根据牌河 + 可见牌推断他的听张概率，返回每种牌的危险排名 */
 export function readRound(sc, samples = READ_SAMPLES) {
   const read = inferWaits({
-    discards: sc.discards,
+    discards: sc.discardsInfo ?? sc.discards,
     visible: sc.visible,
     samples,
     seed: (Math.imul(sc.seed, 2654435761) ^ 0x9e37) >>> 0,
+    wall: true,   // 4 张全见的牌不可能和，依赖它的等待直接作废
   });
   const rows = dangerTable(read, sc.visible);
   const rank = new Map(rows.map((r, i) => [r.tile, i + 1]));

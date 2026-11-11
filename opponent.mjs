@@ -57,7 +57,8 @@ export function simulateRound(seed, turns = 10) {
     const best = cands[0];
     const idx = h14.indexOf(best.tile);
     h = h14.slice(0, idx).concat(h14.slice(idx + 1));
-    path.push({ draw, discard: best.tile, shanten: best.shanten, ukeire: best.ukeire });
+    // tsumogiri = 刚摸到的那张直接打掉（手里原本没有它）；否则是从手牌里挑出来打的
+    path.push({ draw, discard: best.tile, tsumogiri: draw === best.tile, shanten: best.shanten, ukeire: best.ukeire });
 
     if (best.shanten === 0 && knockAt < 0) {
       knockAt = i;

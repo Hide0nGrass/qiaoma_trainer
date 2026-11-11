@@ -44,14 +44,31 @@ function sampleWinHand(pool, rnd) {
 
 /**
  * @param {object} o
- * @param {number[]} o.discards  对手打出的牌（按顺序）
+ * @param {Array<number|{tile:number, tsumogiri?:boolean}>} o.discards
+ *        对手打出的牌（按顺序）。给对象形式时带「是不是摸切」标记：
+ *        摸切 = 刚摸到就打掉，手里原本没有这张；手切 = 从手牌里挑出来打的。
  * @param {number[]} o.visible   可见牌计数（长度 27；自己手牌 + 四家牌河 + 副露）
  * @param {number} [o.samples]
  * @param {number} [o.seed]
  * @param {number} [o.recent]    最近多少张算「收形期」，惩罚更重
+ * @param {'off'|'weak'|'strong'} [o.tsumogiri] 摸切惩罚系数怎么调（off = 与手切一样）
+ * @param {'off'|'strong'} [o.tsumogiriHold] 摸切的牌在「他还留着？」上是否罚得更重
+ * @param {boolean} [o.wall]     壁：某张牌 4 张全见时，依赖它的等待直接判死
  */
-export function inferWaits({ discards, visible, samples = 300, seed = 1, recent = 4 }) {
+export function inferWaits({
+  discards,
+  visible,
+  samples = 300,
+  seed = 1,
+  recent = 4,
+  nearPenalty = 0.08,
+  farPenalty = 0.35,
+  tsumogiri = 'off',
+  tsumogiriHold = 'off',
+  wall = false,
+}) {
   const rnd = mulberry32(seed >>> 0);
+  const ds = discards.map((d) => (typeof d === 'number' ? { tile: d, tsumogiri: false } : d));
   const pool = [];
   for (let t = 0; t < KINDS; t++) {
     const n = 4 - (visible[t] || 0);
@@ -61,18 +78,27 @@ export function inferWaits({ discards, visible, samples = 300, seed = 1, recent 
   for (const t of pool) poolCounts[t]++;
 
   // 每张弃牌的惩罚系数：越靠后越重
+  // 摸切（刚摸到就打）说明手里原本没有这张，对「他不要什么」的证据比手切更弱/更强，
+  // 由 tsumogiri 参数决定：weak = 往 1 靠（当成弱证据），strong = 更狠。
   const penalty = new Map();
-  for (let i = 0; i < discards.length; i++) {
-    const age = discards.length - i;
-    const f = age <= recent ? 0.08 : 0.35;
-    penalty.set(discards[i], (penalty.get(discards[i]) ?? 1) * f);
+  for (let i = 0; i < ds.length; i++) {
+    const age = ds.length - i;
+    let f = age <= recent ? nearPenalty : farPenalty;
+    if (ds[i].tsumogiri) {
+      if (tsumogiri === 'weak') f = 1 - (1 - f) * 0.5;
+      else if (tsumogiri === 'strong') f *= 0.5;
+    }
+    penalty.set(ds[i].tile, (penalty.get(ds[i].tile) ?? 1) * f);
   }
 
-  // 他打过的牌，说明「对他来说没用」：候选手牌里还留着这些牌就越可疑
+  // 他打过的牌，说明「对他来说没用」：候选手牌里还留着这些牌就越可疑。
+  // 摸切（手里原本没有、刚摸到就打）比手切更能证明「他手里没这张」，
+  // 所以 tsumogiriHold = 'strong' 时给摸切的牌更重的惩罚。
   const hold = new Map();
-  for (let i = 0; i < discards.length; i++) {
-    const d = discards[i];
-    const w = discards.length - i <= recent ? 0.35 : 0.75;
+  for (let i = 0; i < ds.length; i++) {
+    const d = ds[i].tile;
+    let w = ds.length - i <= recent ? 0.35 : 0.75;
+    if (ds[i].tsumogiri && tsumogiriHold === 'strong') w *= 0.7;
     hold.set(d, (hold.get(d) ?? 1) * w);
   }
 
@@ -89,7 +115,10 @@ export function inferWaits({ discards, visible, samples = 300, seed = 1, recent 
 
     const c13 = countsOf(hand);
     if (shanten(c13) !== 0) continue;
-    const waits = ukeire(c13).list;
+    let waits = ukeire(c13).list;
+    // 壁：如果这张的剩余牌全在可见牌里（4 张全见），或者全在他自己手里，
+    // 他就没法靠它和牌 —— 依赖它的等待直接作废（否则样本里会混进死听）。
+    if (wall) waits = waits.filter((w) => poolCounts[w.tile] - c13[w.tile] > 0);
     if (!waits.length) continue;
 
     let w = 1;
