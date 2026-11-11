@@ -1,22 +1,26 @@
 // 摇铃练习：他敲牌之后，你一张一张地出牌，判断会不会点炮。
 //
-// 一「局」= 一个已经敲了的对手（牌河 + 冻结的 13 张）。你手上有一串还没打的牌，
+// 一「局」= 一个已经敲了的对手（牌河 + 冻结的 13 张）再加你独立发到的 13 张牌。
 // 每次只把下一张拿出来问「打这张出去，危不危险」：
-//   答对  → 这张按你的判断处理（说安全就打出去进你的牌河，说危险就扣下），继续下一张
-//   答错  → 他荣和，本局结束，点炮那张进你的牌河
+//   和牌河推断一致 → 这张按你的判断处理（说安全就打出去，说危险就扣下），继续下一张
+//   不一致         → 连对断；如果打了真听张，他荣和，本局结束
 // 撑过 MAX_Q 张没点炮 = 本局逃掉。之后才换新的一局。
 //
-// 题目是平衡的：每局的牌串里一半是他的听张（危险）、一半不在听张里（安全），
-// 否则一路点「不危险」也能有八成正确率，练不出东西。
+// 关键：判分看的是「牌河推断」（read.mjs），不是你猜没猜中他的真手牌。
+// 他的真手牌只决定「打出去会不会被和」，并且只在整局结束时揭晓——
+// 这样练的是读牌，不是透视。
 import { decompose, tileName } from '../engine.mjs';
 import { mulberry32, shuffle, simulateRound } from '../opponent.mjs';
+import { dangerTable, inferWaits } from '../read.mjs';
 import { faceSVG } from './tiles.js';
 
 const KINDS = 27;
 const MIN_RIVER = 5;   // 至少 5 张弃牌才出题，否则等于让玩家猜
 const MAX_TURNS = 16;  // simulateRound 的上限：他最多摸 16 手就要听牌
 const MAX_Q = 12;      // 撑过 12 张算「逃掉」
-const STAT_KEY = 'qiaoma.readquiz.v2';
+const READ_SAMPLES = 240; // 推断采样数：约 230ms / 局，开局算一次，之后复用
+const DANGER_TOPK = 5;    // 推断前 5 名算「牌河说危险」（top-5 的区分度约 2 倍于安全牌）
+const STAT_KEY = 'qiaoma.readquiz.v3';
 
 function counts(arr) {
   const c = new Array(KINDS).fill(0);
@@ -62,55 +66,57 @@ function riverClues(sc, tile) {
   return { hard, soft };
 }
 
-/** 这题从牌河上读得出来吗（有硬线索或倾向线索） */
-function isReadable(sc, tile) {
-  const c = riverClues(sc, tile);
-  return c.hard.length + c.soft.length > 0;
-}
-
-/** 造一局：已敲的对手 + 一串待打的牌（一半危险一半安全） */
+/**
+ * 造一局：已敲的对手 + 我独立发到的 13 张牌。
+ *
+ * 我的牌**不能**从他的听张里挑：那样等于出题时就把答案塞进题面，
+ * 而且会把他的听张从推断的牌池里抽干（实测排名会整个反过来）。
+ * 这里只做一件事——从「他没摸到过的牌」里随机发 13 张。
+ */
 export function makeRound(seed) {
   const sim = simulateRound(seed, MAX_TURNS);
   if (sim.knockAt < MIN_RIVER || !sim.waits?.length || !sim.frozenHand) return null;
 
   const rnd = mulberry32((seed * 2654435761) >>> 0);
   const discards = sim.path.map((x) => x.discard);
-  const isWait = new Set(sim.waits.map((w) => w.tile));
 
-  // 他手上的 + 他打出的，都不是我能摸到的
+  // 他摸到过的牌 = 冻结的手牌 + 打掉的牌，这些不可能在我手里
   const used = counts([...sim.frozenHand, ...discards]);
-  const avail = (t) => 4 - used[t];
+  const rest = [];
+  for (let t = 0; t < KINDS; t++) for (let i = 0; i < 4 - used[t]; i++) rest.push(t);
+  if (rest.length < MAX_Q + 1) return null;
+  shuffle(rest, rnd);
 
-  // 危险池 / 安全池，各取一半
-  const dangerPool = [];
-  for (let t = 0; t < KINDS; t++) if (isWait.has(t)) for (let i = 0; i < avail(t); i++) dangerPool.push(t);
-  const safePool = [];
-  for (let t = 0; t < KINDS; t++) if (!isWait.has(t)) for (let i = 0; i < avail(t); i++) safePool.push(t);
-
-  shuffle(dangerPool, rnd);
-  shuffle(safePool, rnd);
-
-  const half = Math.floor(MAX_Q / 2);
-  const nd = Math.min(half, dangerPool.length);
-  const ns = Math.min(MAX_Q - nd, safePool.length);
-  const bag = [...dangerPool.slice(0, nd), ...safePool.slice(0, ns)];
-  // 一边不够时用另一边补
-  let bi = nd, si = ns;
-  while (bag.length < MAX_Q && (bi < dangerPool.length || si < safePool.length)) {
-    bag.push(bi < dangerPool.length ? dangerPool[bi++] : safePool[si++]);
-  }
-  shuffle(bag, rnd);
+  const hand = rest.slice(0, MAX_Q + 1);   // 第 13 张留作「刚摸到的」，不出题
+  const bag = hand.slice(0, MAX_Q);
+  const visible = counts([...discards, ...hand]);
 
   return {
     seed,
     bag,
+    hand,
     discards,
     knockTurn: sim.path.length,
     frozen: sim.frozenHand,
     waits: sim.waits.map((w) => w.tile),
-    visible: used,
+    visible,
   };
 }
+
+/** 只根据牌河 + 可见牌推断他的听张概率，返回每种牌的危险排名 */
+export function readRound(sc, samples = READ_SAMPLES) {
+  const read = inferWaits({
+    discards: sc.discards,
+    visible: sc.visible,
+    samples,
+    seed: (Math.imul(sc.seed, 2654435761) ^ 0x9e37) >>> 0,
+  });
+  const rows = dangerTable(read, sc.visible);
+  const rank = new Map(rows.map((r, i) => [r.tile, i + 1]));
+  return { read, rows, rank, p: read.p, topK: DANGER_TOPK };
+}
+
+const pct = (x) => `${Math.round((x || 0) * 100)}%`;
 
 export function createReadMode(els, { toast } = {}) {
   const R = {
@@ -118,11 +124,17 @@ export function createReadMode(els, { toast } = {}) {
     roundNo: 0,
     scenario: null,
     state: 'question',   // question | revealed | over
-    qi: 0,               // 本局已计分的题数
-    pos: 0,              // 当前是牌串里的第几张（含不计分的题）
+    qi: 0,               // 本局已答的题数
+    pos: 0,              // 当前是牌串里的第几张
     answer: null,
-    result: null,        // 'clear' | 'deal'
+    result: null,        // ok | edge | conservative | overread | deal | clear
     dealtTile: -1,
+    infer: null,         // readRound() 的结果：rank / p
+    inferMs: 0,
+    p: 0,                // 牌河估的这张被等的概率
+    rank: KINDS,         // 牌河里的危险排名（1 最危险）
+    modelDanger: false,  // 牌河说危险（rank <= DANGER_TOPK）——判分依据
+    danger: false,       // 真值：这张确实是他的听张（只决定会不会被和）
     myRiver: [],
     streak: 0,
     best: 0,
@@ -303,11 +315,11 @@ export function createReadMode(els, { toast } = {}) {
       (R.cleared ? ` · 已逃 ${R.cleared} 局` : '');
     els.tag.innerHTML = shown
       ? `<b>他听 ${sc.waits.map(tileName).join(' / ')}</b>`
-      : '<b>已敲 · 手牌冻结</b> · 判定用本地引擎 · 讲解走 DeepSeek';
+      : `<b>已敲 · 手牌冻结</b> · 判定看牌河（前 ${DANGER_TOPK} 名算危险）· 讲解走 DeepSeek`;
 
     let q = '';
     if (R.state === 'question') q = '这张牌打出去，危不危险？';
-    else if (R.state === 'revealed') q = R.danger ? '他确实在等这张' : '这张是安全的';
+    else if (R.state === 'revealed') q = `牌河估：${pct(R.p)} · 27 种里第 ${R.rank} 危险`;
     else q = R.result === 'deal' ? '点炮了' : `撑过 ${MAX_Q} 张，这局逃掉了`;
     els.quizQ.textContent = q;
 
@@ -324,38 +336,53 @@ export function createReadMode(els, { toast } = {}) {
 
   function paintFeedback() {
     const sc = R.scenario;
-    const correct = (R.answer === 'danger') === R.danger;
-    const conservative = R.result === 'conservative';
-    const waits = sc.waits.map(tileName).join(' / ');
     const q = tileName(R.dealtTile);
     const clues = riverClues(sc, R.dealtTile);
     const hardBit = clues.hard.length ? `${clues.hard.join('、')}。` : '';
+    const readBit = `牌河估 ${pct(R.p)}，27 种里第 ${R.rank} 危险`;
+    const res = R.result;
+    const over = R.state === 'over';
 
-    // 他剩下那一组是什么形——只知道「形 + 等几种」，不知道具体牌
-    const groups = hisGroups(sc);
-    const waitGrp = groups.find((g) => g.wait);
-    const shapeRaw = waitGrp ? waitGrp.shape : '';
-    const shape = shapeRaw === '孤张' ? '单吊' : shapeRaw === '对子' ? '双碰' : shapeRaw;
-    const k = sc.waits.length;
-    const shapeBit = shape ? `${glossOf(shape)}，等 ${k} 种牌` : '';
-
-    const blind = R.result === 'blind';
-    let why;
-    if (blind) {
-      why = R.danger
-        ? `${q} 其实正补进他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}——这手牌河上没有线索，读不出来，不计分。`
-        : `${q} 其实不在他等的牌里；这手牌河上没有线索，读不出来，不计分。`;
-    } else if (conservative) {
-      why = `这张其实是安全的（${shapeBit ? `补不上他${shapeBit}` : '不在他的听张里'}）。${hardBit}你白白扣了一张——没点炮，但连对断了。`;
-    } else if (R.state === 'over') {
-      why = R.danger
-        ? `他等的就是 <b>${waits}</b>（${shape}）；${q} 正好补上。${hardBit}`
-        : `他等的就是 <b>${waits}</b>（${shape}）；${q} 补不上。${hardBit}`;
-    } else if (R.danger) {
-      why = `${q} 正好补进他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}——这张出去就是炮。${hardBit}`;
-    } else {
-      why = `${q} 补不上他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}，可以打。${hardBit}`;
+    // 他的形和听张只有本局结束才揭晓——中途给出来就是答案
+    let shape = '';
+    let waitsBit = '';
+    if (over) {
+      const waitGrp = hisGroups(sc).find((g) => g.wait);
+      const shapeRaw = waitGrp ? waitGrp.shape : '';
+      shape = shapeRaw === '孤张' ? '单吊' : shapeRaw === '对子' ? '双碰' : shapeRaw;
+      const shapeBit = shape ? `（${glossOf(shape)}，${sc.waits.length} 种）` : '';
+      waitsBit = ` 他敲时等的其实是 ${sc.waits.map(tileName).join(' / ')}${shapeBit}。`;
     }
+
+    let mark = '对';
+    let why;
+    switch (res) {
+      case 'ok':
+        why = R.modelDanger
+          ? `${readBit}——这张确实排进前 ${DANGER_TOPK}，你扣下了，和牌河判断一致。${hardBit}`
+          : `${readBit}——没进前 ${DANGER_TOPK}，你打了，和牌河判断一致。${hardBit}`;
+        break;
+      case 'edge':
+        mark = '边界';
+        why = `${readBit}，正好压在分界线上（前 ${DANGER_TOPK} 名算危险）。这题不计分——两种判断都说得过去。`;
+        break;
+      case 'conservative':
+        mark = '保守';
+        why = `${readBit}——牌河没把它排进危险区，你却扣下了。${hardBit}没点炮，但白扣一张，连对断了。`;
+        break;
+      case 'overread':
+        mark = '估高';
+        why = `${readBit}——你按牌河打了出去；他其实没在等这张。${hardBit}读牌模型本来就有误差，这种「牌河该避、其实没事」的牌会一直出现。`;
+        break;
+      case 'deal':
+        mark = '点炮';
+        why = `${readBit}——你打了，他荣和。${hardBit}`;
+        break;
+      default:
+        mark = '过';
+        why = `${readBit}——这一局撑下来了。`;
+    }
+    if (over) why += waitsBit;
     const note = [
       clues.soft.length ? `牌河上：${clues.soft.join('；')}。` : '',
       sc.discards.includes(R.dealtTile)
@@ -363,16 +390,19 @@ export function createReadMode(els, { toast } = {}) {
     ].filter(Boolean).join(' ');
 
     const plainWhy = why.replace(/<[^>]+>/g, '');
+    const tone = res === 'ok' ? 'ok'
+      : res === 'edge' || res === 'conservative' ? 'blind'
+        : res === 'clear' ? 'ok' : 'bad';
     els.fb.hidden = false;
-    els.fb.className = `feedback ${blind ? 'blind' : correct ? 'ok' : 'bad'}`;
+    els.fb.className = `feedback ${tone}`;
     els.fb.innerHTML =
-      `<span class="fb-mark">${blind ? '无线索' : correct ? '对' : conservative ? '保守' : '错'}</span>` +
+      `<span class="fb-mark">${mark}</span>` +
       `<span class="fb-body">` +
       `<span class="fb-ai" hidden></span>` +
       `<span class="fb-local">${why}` +
-      (R.state === 'over' && R.result === 'deal'
+      (over && res === 'deal'
         ? ' 这一张打出去他就荣和了，本局结束。'
-        : R.state === 'over' ? ' 这一局他没等到牌，你逃掉了。' : '') +
+        : over ? ' 这 12 张里他没等到牌，本局结束。' : '') +
       `</span>` +
       `${note ? `<span class="fb-note">${note}</span>` : ''}</span>` +
       `<span class="fb-score">连对 ${R.streak} · 最长 ${R.best}</span>`;
@@ -384,17 +414,22 @@ export function createReadMode(els, { toast } = {}) {
       askReadCoach({
         knockTurn: sc.knockTurn,
         discardsText: sc.discards.map(tileName).join(' '),
-        shape: shape && SHAPE_NOTE[shape] ? `${shape}（${SHAPE_NOTE[shape]}）` : shape,
-        waitKinds: k,
-        waitsText: R.state === 'over' ? sc.waits.map(tileName).join(' / ') : '',
         tile: q,
-        danger: R.danger,
+        p: Math.round(R.p * 1000) / 1000,
+        rank: R.rank,
+        kinds: KINDS,
+        modelDanger: R.modelDanger,
+        agree: res === 'ok' ? true : res === 'edge' ? null : false,
+        choice: R.answer,
+        over,
+        shape: over ? (shape && SHAPE_NOTE[shape] ? `${shape}（${SHAPE_NOTE[shape]}）` : shape) : '',
+        waitKinds: over ? sc.waits.length : 0,
+        waitsText: over ? sc.waits.map(tileName).join(' / ') : '',
         cluesText: clues.hard.join('、'),
         softText: clues.soft.join('；'),
-        resultText: R.state === 'over'
-          ? (R.result === 'deal' ? '他荣和，本局结束' : '他没等到，本局结束')
-          : conservative ? '没点炮，但连对断了' : '还在继续',
-        readable: R.readable,
+        resultText: over
+          ? (res === 'deal' ? '他荣和，本局结束' : '他没等到，本局结束')
+          : res === 'conservative' ? '没点炮，但连对断了' : '还在继续',
         fallback: plainWhy,
       });
     }
@@ -402,82 +437,106 @@ export function createReadMode(els, { toast } = {}) {
 
   /* ---------- 流程 ---------- */
 
+  /** 把牌串里的第 pos 张摆上台面，并查好它在牌河里的危险排名 */
+  function handOut(sc, pos) {
+    const tile = sc.bag[pos];
+    R.pos = pos;
+    R.dealtTile = tile;
+    R.danger = sc.waits.includes(tile);        // 真值：只决定打出去会不会被和
+    R.p = R.infer.p.get(tile) || 0;
+    R.rank = R.infer.rank.get(tile) || KINDS;
+    R.modelDanger = R.rank <= DANGER_TOPK;     // 判分依据：牌河推断
+    R.answer = null;
+  }
+
   function startRound(seed) {
     let sc = null;
     let s = seed >>> 0;
     for (let i = 0; i < 80 && !sc; i++) sc = makeRound((s + i * 7919) >>> 0);
     if (!sc) { toast?.('没造出局，再试一次'); return; }
+    const t0 = performance.now();
+    R.infer = readRound(sc);
+    R.inferMs = Math.round(performance.now() - t0);
     R.scenario = sc;
     R.roundNo++;
     R.qi = 0;
-    R.pos = 0;
     R.state = 'question';
-    R.answer = null;
     R.result = null;
     R.myRiver = [];
-    R.dealtTile = sc.bag[R.pos];
-    R.danger = sc.waits.includes(R.dealtTile);
-    R.readable = isReadable(sc, R.dealtTile);
+    handOut(sc, 0);
     els.fb.hidden = true;
     paint();
+  }
+
+  /** 一题收尾：撑满 MAX_Q / 问完牌串就算逃掉 */
+  function settle() {
+    if (R.qi >= MAX_Q || R.pos >= R.scenario.bag.length - 1) {
+      R.state = 'over';
+      R.result = 'clear';
+      R.cleared++;
+      saveStats();
+      return true;
+    }
+    R.state = 'revealed';
+    return false;
   }
 
   function answer(choice) {
     if (R.state !== 'question') return;
     R.answer = choice;
-    // 牌河上一点线索都没有的题：不计分、不判点炮（本来就读不出来）
-    if (!R.readable) {
-      R.result = 'blind';
-      R.state = 'revealed';
-      paint();
-      paintFeedback();
-      return;
-    }
-    const correct = (choice === 'danger') === R.danger;
-    R.total++;
-    R.qi++;
-    if (correct) {
+    const wantDanger = choice === 'danger';
+    const agree = wantDanger === R.modelDanger;
+    // 压线题：排名正好卡在第 5 / 6，两种判断都说得过去，不计分也不断连对
+    const edge = !agree && (R.rank === DANGER_TOPK || R.rank === DANGER_TOPK + 1);
+    R.qi = R.pos + 1;
+
+    if (agree) {
+      R.total++;
       R.right++;
       R.streak++;
       if (R.streak > R.best) R.best = R.streak;
-      // 说安全就真打出去，说危险就扣下
-      if (choice === 'safe') R.myRiver.push(R.dealtTile);
-      saveStats();
-      if (R.qi >= MAX_Q || R.pos >= R.scenario.bag.length - 1) {
-        R.state = 'over';
-        R.result = 'clear';
-        R.cleared++;
-        saveStats();
-      } else {
-        R.state = 'revealed';
-      }
+      R.result = 'ok';
+      if (!wantDanger) R.myRiver.push(R.dealtTile);
+      settle();
+    } else if (edge) {
+      R.result = 'edge';
+      if (!wantDanger) R.myRiver.push(R.dealtTile);
+      settle();
     } else {
+      R.total++;
       R.streak = 0;
-      R.myRiver.push(R.dealtTile);
-      if (R.danger) {
-        // 真危险却打了出去 —— 点炮，本局结束
-        R.state = 'over';
-        R.result = 'deal';
+      if (!wantDanger) {
+        R.myRiver.push(R.dealtTile);
+        if (R.danger) {
+          // 牌河没排进危险区，但真值偏偏是听张 —— 点炮
+          R.state = 'over';
+          R.result = 'deal';
+        } else {
+          R.result = 'overread';
+          settle();
+        }
       } else {
-        // 其实安全，只是你保守了：不算点炮，继续这一局
         R.result = 'conservative';
-        R.state = 'revealed';
+        settle();
       }
-      saveStats();
     }
+    saveStats();
     paint();
     paintFeedback();
   }
 
   function advance() {
     if (R.state !== 'revealed') return;
-    R.pos++;
-    if (R.pos >= R.scenario.bag.length) { R.state = 'over'; R.result = 'clear'; paint(); return; }
-    R.dealtTile = R.scenario.bag[R.pos];
-    R.danger = R.scenario.waits.includes(R.dealtTile);
-    R.readable = isReadable(R.scenario, R.dealtTile);
+    if (R.pos + 1 >= R.scenario.bag.length) {
+      R.state = 'over';
+      R.result = 'clear';
+      R.cleared++;
+      saveStats();
+      paint();
+      return;
+    }
+    handOut(R.scenario, R.pos + 1);
     R.state = 'question';
-    R.answer = null;
     els.fb.hidden = true;
     paint();
   }

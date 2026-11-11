@@ -131,34 +131,38 @@ function sse(res, obj) {
 const READ_SYSTEM_PROMPT = [
   '你是"敲麻"（108张：万筒条各1-9，无字牌）的读牌教练。',
   '用户在一个已经敲牌（听牌）的对手面前，判断某一张牌打出去会不会点炮。',
-  '系统已经用本地引擎算好了：这张牌是不是他的听张、他等的那一组是什么形、等几种牌，',
-  '以及他的牌河能读出哪些线索。你要做的是把这些事实讲成一堂小课，教他"以后怎么看"。',
+  '判定看的不是对手的真手牌，而是"牌河推断"：本地模型根据他的牌河和可见牌，',
+  '估出这张被等的概率 p 和 27 种牌里的危险排名，前 5 名算"危险"。',
+  '你要做的是把这个概率和牌河线索讲成一堂小课，教他"以后怎么看"。',
   '输出两句、总共不超过 80 个汉字：',
-  '第一句说这一手该怎么读（他缺的是哪一类的牌 / 牌河上哪条线索支持这个判断）；',
+  '第一句说这一手该怎么读（p 和排名说明什么 / 牌河上哪条线索支持这个判断）；',
   '第二句说下次遇到同类局面该看什么。',
-  '只用给出的牌河和形，不要臆造他手里的牌；不要复述"对/错"这种结论词；不要列表、不要客套。',
+  '只用给出的牌河、概率和线索，不要臆造他手里的牌；不要复述"对/错"这种结论词；不要列表、不要客套。',
   '形名（两面 / 嵌张 / 边张 / 单吊 / 双碰）必须照抄题目给的写法（含括号里的解释），不要改写成别的形，也不要推断更细的搭子类型。',
   '如果用户是新手，可以在第二句里用一句白话解释这个词（≤14 字），例如"双碰就是手里两个对子，等哪张先摸成刻"；不要重复解释同一题里已经解释过的词。',
   '牌河里有"筋"时可以说"某张是他的筋"；没有线索时直接说"这手牌河上看不出来"，不要编。',
-  '题面会标 readable：false 表示这题从牌河上根本读不出来（不计分）。这时不要假装能读，直接说"这手看不出"，并讲一句"读不出来时按最安全的打法"。',
+  '读牌模型本身有误差：牌河说危险、实际可能没事；牌河说安全、也可能点炮。',
+  '不要把它说成绝对答案，要讲"这个概率下该怎么取舍"。',
+  '整局结束时题目才会揭晓他的真实听张，那之前不要猜具体牌。',
   '重要：敲麻没有振听（只有漏胡），他打过的牌仍然可能是他的听张。所以"現物"只能当低概率线索，',
-  '禁止说"他不会要自己打过的牌"这类话；如果题目判定这张是危险的現物，必须承认它确实是炮。',
-  '局中不要报出他的具体听张（题目里没给时就更不能编）。',
+  '禁止说"他不会要自己打过的牌"这类话。',
 ].join('');
 
 function buildReadPrompt(p) {
+  const pctText = `${Math.round((p.p || 0) * 100)}%`;
   const lines = [
     `他已经敲牌（第 ${p.knockTurn} 手敲），牌河（按打出顺序）：${p.discardsText || '（空）'}`,
-    `他等的那一组：${p.shape || '未知'}，等 ${p.waitKinds} 种牌`,
-    p.waitsText ? `他的听张：${p.waitsText}` : '',
     `你手上这张要打出去的是：${p.tile}`,
-    `本地引擎判定：${p.danger ? '危险（正好是他的听张）' : '安全（不在他的听张里）'}`,
+    `牌河推断（本地模型）：这张被等的概率约 ${pctText}，在 ${p.kinds} 种牌里排第 ${p.rank || '?'} 危险（前 5 名算危险）`,
+    `你的选择：${p.choice === 'danger' ? '危险，扣下' : '安全，打出去'}；` +
+      (p.agree === true ? '和牌河推断一致' : p.agree === null ? '正好压线（这题不计分）' : '和牌河推断不一致'),
     `牌河线索：${p.cluesText || '没有能证明的线索'}`,
     p.softText ? `倾向性观察：${p.softText}` : '',
     `本局结果：${p.resultText || '还在继续'}`,
-    p.danger
-      ? '请讲：为什么这张是炮，牌河上本来能不能看出来。'
-      : '请讲：为什么这张安全，牌河上该怎么确认。',
+    p.over ? `已经揭晓：他的真实听张是 ${p.waitsText}${p.shape ? `（${p.shape}，${p.waitKinds} 种）` : ''}` : '',
+    p.over
+      ? '整局结束了：可以说出他的真实听张，并讲清牌河推断这次对在哪、错在哪。'
+      : '局中不要报出他的具体听张，也不要猜。',
   ].filter(Boolean);
   return lines.join(String.fromCharCode(10));
 }
@@ -174,11 +178,17 @@ async function handleReadCoach(req, res) {
   const payload = {
     knockTurn: Number(body.knockTurn) || 0,
     discardsText: clean(body.discardsText, 200),
-    shape: clean(body.shape, 8),
+    tile: clean(body.tile, 8),
+    p: Number(body.p) || 0,
+    rank: Number(body.rank) || 0,
+    kinds: Number(body.kinds) || 27,
+    modelDanger: !!body.modelDanger,
+    agree: body.agree === true ? true : body.agree === null ? null : false,
+    choice: body.choice === 'danger' ? 'danger' : 'safe',
+    over: !!body.over,
+    shape: clean(body.shape, 24),
     waitKinds: Number(body.waitKinds) || 0,
     waitsText: clean(body.waitsText, 40),
-    tile: clean(body.tile, 8),
-    danger: !!body.danger,
     cluesText: clean(body.cluesText, 200),
     softText: clean(body.softText, 160),
     resultText: clean(body.resultText, 20),

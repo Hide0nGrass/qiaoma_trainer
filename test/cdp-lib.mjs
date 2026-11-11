@@ -3,7 +3,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+// 默认用 Chrome；没装 Chrome 时可以用 CHROME_BIN 指到 Edge（同样支持 --headless=new）
+const CHROME = process.env.CHROME_BIN || [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+].find((p) => fs.existsSync(p)) || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function connect({ port = 9334, url = 'http://127.0.0.1:8788/', profile = '.chrome-cdp' } = {}) {
