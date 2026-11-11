@@ -24,6 +24,15 @@ function counts(arr) {
   return c;
 }
 
+const SHAPE_NOTE = {
+  两面: '两张连号，两边都能进张',
+  嵌张: '只等中间那一张',
+  边张: '只有一头能进张',
+  双碰: '两个对子，等哪一张先成刻',
+  单吊: '单张牌等成对',
+};
+const glossOf = (shape) => (SHAPE_NOTE[shape] ? `${shape} · ${SHAPE_NOTE[shape]}` : shape);
+
 const SUITS = ['万子', '筒子', '条子'];
 const suitOf = (t) => Math.floor(t / 9);
 
@@ -321,7 +330,7 @@ export function createReadMode(els, { toast } = {}) {
     const shapeRaw = waitGrp ? waitGrp.shape : '';
     const shape = shapeRaw === '孤张' ? '单吊' : shapeRaw === '对子' ? '双碰' : shapeRaw;
     const k = sc.waits.length;
-    const shapeBit = shape ? `${shape}，等 ${k} 种牌` : '';
+    const shapeBit = shape ? `${glossOf(shape)}，等 ${k} 种牌` : '';
 
     let why;
     if (conservative) {
@@ -363,7 +372,7 @@ export function createReadMode(els, { toast } = {}) {
       askReadCoach({
         knockTurn: sc.knockTurn,
         discardsText: sc.discards.map(tileName).join(' '),
-        shape,
+        shape: shape && SHAPE_NOTE[shape] ? `${shape}（${SHAPE_NOTE[shape]}）` : shape,
         waitKinds: k,
         waitsText: R.state === 'over' ? sc.waits.map(tileName).join(' / ') : '',
         tile: q,
