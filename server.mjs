@@ -290,8 +290,9 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
   // 牌效引擎在项目根目录，前后端共用同一份
-  if (url.pathname === '/engine.mjs') {
-    fs.readFile(path.join(ROOT, 'engine.mjs'), (err, buf) => {
+  if (url.pathname === '/engine.mjs' || url.pathname === '/opponent.mjs' || url.pathname === '/read.mjs') {
+    const file = path.join(ROOT, url.pathname.slice(1));
+    fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' });
       res.end(buf);

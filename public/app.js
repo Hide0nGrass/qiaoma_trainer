@@ -4,6 +4,7 @@ import {
   newRound, shanten, tileName, tileShort, ukeireAfter,
 } from '../engine.mjs';
 import { faceSVG } from './tiles.js';
+import { createReadMode } from './readmode.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -25,6 +26,11 @@ const els = {
   mistakeList: $('mistakeList'), mistakeCount: $('mistakeCount'), mistakeClear: $('mistakeClear'),
   saveFav: $('saveFav'), favBtn: $('favBtn'), favModal: $('favModal'), favList: $('favList'),
   favCount: $('favCount'), favClear: $('favClear'), favClose: $('favClose'),
+  modeTrain: $('modeTrain'), modeRead: $('modeRead'),
+  trainArea: $('trainArea'), readArea: $('readArea'),
+  rdHand: $('rdHand'), oppHand: $('oppHand'), rdOppRiver: $('rdOppRiver'), rdMyRiver: $('rdMyRiver'),
+  rdRound: $('rdRound'), rdWall: $('rdWall'), rdTurn: $('rdTurn'), rdTag: $('rdTag'),
+  cheatBtn: $('cheatBtn'), readOver: $('readOver'), roTitle: $('roTitle'), roSub: $('roSub'), roNext: $('roNext'),
 };
 
 const VERDICT_LABEL = { best: '最优', good: '优', sub: '次优', wrong: '退向听' };
@@ -1308,6 +1314,18 @@ document.addEventListener('keydown', (e) => {
   // 弹层打开时只响应 Esc，避免误触 A / 空格等快捷键
   const modalOpen = !els.rulesModal.hidden || !els.historyModal.hidden || !els.mistakeModal.hidden || favModalOpen();
   if (modalOpen) return;
+  // 摇铃模式有自己的按键：空格新一局、R 重打、C 看牌
+  if (mode === 'read') {
+    if (e.code === 'Space' || e.key === ' ') {
+      if (onButton) return;
+      e.preventDefault();
+      readMode.newRound();
+      return;
+    }
+    if (e.key === 'r' || e.key === 'R') { readMode.replay(); return; }
+    if (e.key === 'c' || e.key === 'C') { readMode.toggleCheat(); return; }
+    return;
+  }
   if (e.code === 'Space' || e.key === ' ') {
     if (onButton) return;
     e.preventDefault();
@@ -1325,6 +1343,40 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'h' || e.key === 'H') { showHint(); return; }
   if (e.key === 'a' || e.key === 'A') { explainLast(); return; }
 });
+
+/* ------------------------------------------------------------------ *
+ * 模式切换：拆搭 / 摇铃
+ * ------------------------------------------------------------------ */
+let mode = 'train';
+
+const readMode = createReadMode(
+  {
+    area: els.readArea, hand: els.rdHand, oppHand: els.oppHand,
+    oppRiver: els.rdOppRiver, myRiver: els.rdMyRiver,
+    round: els.rdRound, wall: els.rdWall, turn: els.rdTurn, tag: els.rdTag,
+    cheat: els.cheatBtn, over: els.readOver, overTitle: els.roTitle, overSub: els.roSub,
+    next: els.roNext,
+  },
+  { toast },
+);
+
+function setMode(m) {
+  if (m === mode) return;
+  mode = m;
+  const read = m === 'read';
+  document.body.classList.toggle('mode-read', read);
+  els.trainArea.hidden = read;
+  els.coach.hidden = read;
+  els.modeTrain.classList.toggle('on', !read);
+  els.modeRead.classList.toggle('on', read);
+  els.modeTrain.setAttribute('aria-selected', String(!read));
+  els.modeRead.setAttribute('aria-selected', String(read));
+  if (read) { hidePreview(); readMode.enter(); }
+  else readMode.leave();
+}
+
+els.modeTrain.addEventListener('click', () => setMode('train'));
+els.modeRead.addEventListener('click', () => setMode('read'));
 
 /* ------------------------------------------------------------------ *
  * 启动
@@ -1359,3 +1411,8 @@ window.__mj = {
     clearCoach();
   },
 };
+
+// 摇铃模式：给自动化测试用
+window.__mjRead = () => readMode.state;
+window.__mjMode = setMode;
+window.__mjReadStart = (seed) => readMode.startSeed(seed);

@@ -789,6 +789,7 @@ kbd {
 /* ---------------- toast ---------------- */
 .toast {
   position: fixed;
+  top: 84px;
   left: 50%;
   top: 22px;
   transform: translate(-50%, -14px);
@@ -1119,4 +1120,136 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- 模式切换 ---------- */
+.modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+.mode {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 5px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.mode:hover { color: var(--ink-2); }
+.mode.on { background: var(--ink); color: #fffdf8; }
+
+.coach[hidden], .read-area[hidden], .table-area[hidden] { display: none !important; }
+
+/* ---------- 摇铃模式 ---------- */
+.read-area {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 8px;
+}
+
+.opp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, .9), rgba(247, 244, 236, .6));
+}
+.opp-line { display: flex; align-items: center; gap: 14px; }
+.opp-name { font-size: 12px; color: var(--muted); letter-spacing: .08em; white-space: nowrap; }
+.opp-hand { display: flex; gap: 4px; flex-wrap: wrap; }
+.opp-tag { font-size: 11.5px; color: var(--muted); }
+.opp-tag.knocked { color: var(--red); font-weight: 600; }
+
+.tile.back {
+  width: 30px;
+  height: 41px;
+  border-radius: 4px;
+  border: 1px solid #cdbfa4;
+  background:
+    repeating-linear-gradient(45deg, rgba(160, 140, 108, .16) 0 3px, transparent 3px 6px),
+    linear-gradient(180deg, #f3ead6, #e7dcc4);
+  box-shadow: 0 1px 2px rgba(80, 62, 36, .14);
+}
+.tile.sm {
+  width: 30px;
+  height: 41px;
+  padding: 2px;
+  border-radius: 4px;
+}
+.tile.sm svg { padding: 4%; }
+
+.opp-river, .my-river {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 41px;
+  align-items: center;
+}
+.opp-river:empty::before, .my-river:empty::before {
+  content: '还没有出牌';
+  font-size: 11.5px;
+  color: var(--muted);
+  opacity: .7;
+}
+.my-river { padding: 2px 2px 0; }
+.my-panel { display: flex; flex-direction: column; gap: 10px; }
+.my-panel .hand-wrap { padding: 26px 0 4px; }
+.hand.waiting { opacity: .82; pointer-events: none; }
+
+.read-over {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(247, 244, 236, .72);
+  backdrop-filter: blur(3px);
+  z-index: 20;
+}
+.ro-card {
+  text-align: center;
+  padding: 26px 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--paper-2);
+  box-shadow: 0 18px 40px -22px rgba(60, 46, 24, .45);
+}
+.ro-title { font-family: var(--serif); font-size: 26px; letter-spacing: .06em; }
+.ro-title::after { content: ''; display: block; }
+.read-over.lose .ro-title { color: var(--red); }
+.read-over.win .ro-title { color: var(--green); }
+.ro-sub { margin: 8px 0 16px; font-size: 12.5px; color: var(--muted); }
+
+.read-over[hidden] { display: none !important; }
+.mode { white-space: nowrap; }
+.modes { flex: 0 0 auto; }
+body.mode-read .stats,
+body.mode-read #historyBtn,
+body.mode-read #mistakeBtn,
+body.mode-read #favBtn { display: none; }
+
+.knock-sep {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  font-size: 10px;
+  color: var(--red);
+  letter-spacing: .1em;
+  padding: 0 6px;
+  border-left: 1px dashed rgba(181, 52, 42, .45);
+  margin-right: 3px;
 }

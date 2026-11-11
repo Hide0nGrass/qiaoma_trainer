@@ -16,8 +16,13 @@
       <div class="logo">敲</div>
       <div class="titles">
         <h1>敲麻</h1>
-        <p>拆搭训练 · 108 张</p>
+        <p>108 张 · 拆搭 / 摇铃</p>
       </div>
+    </div>
+
+    <div class="modes" role="tablist" aria-label="训练模式">
+      <button class="mode on" id="modeTrain" role="tab" aria-selected="true" title="拆搭练习：判断该打哪张">拆搭</button>
+      <button class="mode" id="modeRead" role="tab" aria-selected="false" title="摇铃练习：读对手的听牌，避开点炮">摇铃</button>
     </div>
 
     <div class="stats">
@@ -37,7 +42,7 @@
   </header>
 
   <main class="board">
-    <section class="table-area">
+    <section class="table-area" id="trainArea">
       <div class="table-meta">
         <span class="chip" id="roundChip">第 1 局</span>
         <span class="sep"></span>
@@ -88,6 +93,45 @@
       <div class="coach-foot">
         <span class="muted" id="coachMeta"></span>
         <span class="keys"><kbd>Z</kbd> 后退 <kbd>L</kbd> 历史 <kbd>M</kbd> 错题 <kbd>F</kbd> 收藏 <kbd>G</kbd> 分组 <kbd>V</kbd> 悬停 <kbd>H</kbd> 提示</span>
+      </div>
+    </section>
+
+    <section class="read-area" id="readArea" hidden>
+      <div class="table-meta">
+        <span class="chip" id="rdRound">第 1 局</span>
+        <span class="sep"></span>
+        <span id="rdWall">牌墙 82 张</span>
+        <span class="sep"></span>
+        <span id="rdTurn">轮到你</span>
+        <span class="flex1"></span>
+        <span class="opp-tag" id="rdTag">门清 · 未敲</span>
+        <button class="switch" id="cheatBtn" role="switch" aria-checked="false" title="显示他的手牌（C）">
+          <span class="switch-dot"></span>看他手牌
+        </button>
+        <span class="tip">点你的牌 = 打出</span>
+      </div>
+
+      <div class="opp-panel">
+        <div class="opp-line">
+          <span class="opp-name">对家</span>
+          <div class="opp-hand" id="oppHand"></div>
+        </div>
+        <div class="opp-line"><span class="opp-name">牌河</span><div class="opp-river" id="rdOppRiver"></div></div>
+      </div>
+
+      <div class="my-panel">
+        <div class="opp-line"><span class="opp-name">你的牌河</span><div class="my-river" id="rdMyRiver"></div></div>
+        <div class="hand-wrap">
+          <div class="hand" id="rdHand"></div>
+        </div>
+      </div>
+
+      <div class="read-over" id="readOver" hidden>
+        <div class="ro-card">
+          <div class="ro-title" id="roTitle"></div>
+          <div class="ro-sub" id="roSub"></div>
+          <button class="btn" id="roNext">下一局 <kbd>Space</kbd></button>
+        </div>
       </div>
     </section>
   </main>
