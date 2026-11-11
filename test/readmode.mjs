@@ -1,116 +1,115 @@
-// 摇铃模式（M1）：模式切换、发牌、摸打循环、他敲、看牌、整局结束
+// 摇铃「二选一」题型的验收：出题、判分、揭底、下一题、统计、键盘、平衡性。
 import { connect } from './cdp-lib.mjs';
+import { makeScenario } from '../public/readmode.js';
 
-const c = await connect({ port: 9405, profile: '.chrome-cdp65', url: 'http://127.0.0.1:8788/' });
-await c.sleep(1100);
-const out = [];
-const ok = (name, cond, extra = '') => out.push([name, !!cond, extra]);
+const c = await connect({ port: 9351, profile: '.chrome-cdp91', url: 'http://127.0.0.1:8788/' });
+await c.sleep(1200);
 
-// 1. 两种模式都在，默认拆搭
-let s = JSON.parse(await c.evaluate(`JSON.stringify({
-  train: !!document.getElementById('modeTrain'),
-  read: !!document.getElementById('modeRead'),
-  trainState: document.getElementById('modeTrain').classList.contains('on'),
-  readHidden: document.getElementById('readArea').hidden,
-})`));
-ok('默认是拆搭模式', s.train && s.read && s.trainState && s.readHidden, JSON.stringify(s));
+const results = [];
+const check = (name, ok, extra = '') => results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' :: ' + extra : ''}`);
 
-// 2. 切到摇铃
+// 1. 切到摇铃
 await c.evaluate("document.getElementById('modeRead').click(); 1");
-await c.sleep(700);
-s = JSON.parse(await c.evaluate(`JSON.stringify({
-  area: document.getElementById('readArea').hidden,
-  trainHidden: document.getElementById('trainArea').hidden,
-  coachHidden: document.getElementById('coach').hidden,
-  my: document.getElementById('rdHand').children.length,
-  his: document.getElementById('oppHand').children.length,
-  wall: __mjRead().wall.length,
-  body: document.body.classList.contains('mode-read'),
-})`));
-ok('切换后只显示摇铃', !s.area && s.trainHidden && s.coachHidden && s.body, JSON.stringify(s));
-ok('发牌 14 / 对手 13 / 牌墙 81', s.my === 14 && s.his === 13 && s.wall === 81, JSON.stringify(s));
-
-// 3. 打一张 → 他跟着摸打
-const before = JSON.parse(await c.evaluate(`JSON.stringify({ wall: __mjRead().wall.length, his: __mjRead().hisRiver.length, my: __mjRead().myRiver.length })`));
-await c.evaluate("document.querySelector('#rdHand .tile').click(); 1");
 await c.sleep(900);
-const after = JSON.parse(await c.evaluate(`JSON.stringify({ wall: __mjRead().wall.length, his: __mjRead().hisRiver.length, myRiver: __mjRead().myRiver.length, my: __mjRead().my.length, turn: __mjRead().turn, hand: document.getElementById('rdHand').children.length })`));
-ok('我出牌进牌河', after.myRiver === before.my + 1, JSON.stringify(after));
-ok('他跟着摸打（牌墙 -2）', after.wall === before.wall - 2, `${before.wall} → ${after.wall}`);
-ok('他打出的牌进他的牌河', after.his === before.his + 1, JSON.stringify(after));
-ok('轮回到我，手牌 14 张', after.turn === 'me' && after.my === 14 && after.hand === 14, JSON.stringify(after));
+const s1 = JSON.parse(await c.evaluate(`JSON.stringify({
+  area: !document.getElementById('readArea').hidden,
+  train: document.getElementById('trainArea') ? document.getElementById('trainArea').hidden : null,
+  no: document.getElementById('rdNo').textContent,
+  hand: document.querySelectorAll('#rdHand .tile').length,
+  qs: document.querySelectorAll('#rdHand .tile.q').length,
+  backs: document.querySelectorAll('#oppHand .back').length,
+  faces: document.querySelectorAll('#oppHand .tile[data-tile]').length,
+  river: document.querySelectorAll('#rdOppRiver .tile').length,
+  knock: document.querySelectorAll('#rdOppRiver .knock-sep').length,
+  discards: __mjRead().scenario.discards.length,
+  truth: __mjRead().scenario.danger,
+  state: __mjRead().state,
+  nextHidden: document.getElementById('nextQ').hidden,
+})`));
+check('摇铃区可见', s1.area);
+check('题号', s1.no === '第 1 题', s1.no);
+check('手牌 13 张', s1.hand === 13, String(s1.hand));
+check('恰好一张问题牌', s1.qs === 1, String(s1.qs));
+check('作答前他的牌是背面', s1.backs === 13 && s1.faces === 0, `${s1.backs}/${s1.faces}`);
+check('牌河张数 = 他打出的张数', s1.river === s1.discards, `${s1.river}/${s1.discards}`);
+check('牌河有「敲」标记', s1.knock === 1);
+check('作答前「下一题」隐藏', s1.nextHidden === true);
 
-// 4. 看他的手牌
-await c.evaluate("document.getElementById('cheatBtn').click(); 1");
+// 2. 答一题（对着真值答，保证判分逻辑自洽）
+const pick = s1.truth ? 'danger' : 'safe';
+await c.evaluate(`__mjAnswer('${pick}'); 1`);
 await c.sleep(250);
-const cheat = JSON.parse(await c.evaluate(`JSON.stringify({
-  on: document.getElementById('cheatBtn').classList.contains('on'),
-  faces: [...document.getElementById('oppHand').children].filter(e => e.dataset.tile).length,
+const s2 = JSON.parse(await c.evaluate(`JSON.stringify({
+  state: __mjRead().state,
+  faces: document.querySelectorAll('#oppHand .tile[data-tile]').length,
+  fb: !document.getElementById('rdFb').hidden,
+  fbText: document.getElementById('rdFb').textContent.trim(),
+  fbClass: document.getElementById('rdFb').className,
+  nextShown: !document.getElementById('nextQ').hidden,
+  ansHidden: document.getElementById('ansDanger').hidden,
+  right: __mjRead().right, total: __mjRead().total,
+  stored: JSON.parse(localStorage.getItem('qiaoma.readquiz.v1') || '{}'),
 })`));
-ok('看牌开关显示 13 张明牌', cheat.on && cheat.faces === 13, JSON.stringify(cheat));
-await c.evaluate("document.getElementById('cheatBtn').click(); 1");
-await c.sleep(200);
+check('揭底状态', s2.state === 'revealed');
+check('揭底后他的牌翻开', s2.faces === 13, String(s2.faces));
+check('反馈出现', s2.fb === true);
+check('答对反馈是 ok', s2.fbClass.includes('ok') && s2.fbText.startsWith('对'), s2.fbText.slice(0, 24));
+check('反馈给出他的听张', /他听|听 /.test(s2.fbText));
+check('「下一题」出现', s2.nextShown === true);
+check('选择按钮收起', s2.ansHidden === true);
+check('统计 +1', s2.total >= 1 && s2.right >= 1, `${s2.right}/${s2.total}`);
+check('统计落盘', s2.stored.total >= 1, JSON.stringify(s2.stored));
 
-// 5. 一直打到他敲（固定种子，结果可复现）
-await c.evaluate('__mjReadStart(20240301)');
+// 3. 故意答错一次，检查判错与连对清零
+await c.evaluate('__mjReadNext(); 1');
 await c.sleep(500);
-let knocked = false;
-for (let i = 0; i < 26 && !knocked; i++) {
-  knocked = await c.evaluate('__mjRead().knocked');
-  if (knocked) break;
-  await c.evaluate("document.querySelector('#rdHand .tile').click(); 1");
-  await c.sleep(750);
-}
-const kn = JSON.parse(await c.evaluate(`JSON.stringify({
-  knocked: __mjRead().knocked, frozen: __mjRead().frozen.length, tag: document.getElementById('rdTag').textContent,
+const truth2 = await c.evaluate('__mjRead().scenario.danger');
+await c.evaluate(`__mjAnswer('${truth2 ? 'safe' : 'danger'}'); 1`);
+await c.sleep(250);
+const s3 = JSON.parse(await c.evaluate(`JSON.stringify({
+  fbClass: document.getElementById('rdFb').className,
+  fbText: document.getElementById('rdFb').textContent.trim(),
+  streak: __mjRead().streak,
 })`));
-ok('他会敲且手牌冻结 13 张', kn.knocked && kn.frozen === 13, JSON.stringify(kn));
-ok('敲的标记出现在状态栏', /已敲/.test(kn.tag), kn.tag);
+check('答错反馈是 bad', s3.fbClass.includes('bad') && s3.fbText.startsWith('错'), s3.fbText.slice(0, 24));
+check('答错连对清零', s3.streak === 0);
 
-// 6. 敲之后他不再换牌（摸什么打什么）
-const f0 = await c.evaluate('JSON.stringify(__mjRead().frozen)');
-await c.evaluate("document.querySelector('#rdHand .tile').click(); 1");
-await c.sleep(900);
-const f1 = await c.evaluate('JSON.stringify(__mjRead().frozen)');
-ok('敲后手牌不再变化', f0 === f1, `${f0.slice(0, 20)}…`);
-
-// 7. 打到整局结束
-for (let i = 0; i < 40; i++) {
-  const over = await c.evaluate('__mjRead().over');
-  if (over) break;
-  await c.evaluate("document.querySelector('#rdHand .tile').click(); 1");
-  await c.sleep(650);
-}
-const end = JSON.parse(await c.evaluate(`JSON.stringify({
-  over: __mjRead().over, result: __mjRead().result,
-  overlay: document.getElementById('readOver').hidden, title: document.getElementById('roTitle').textContent,
-})`));
-ok('一局能自然结束并弹结果', end.over && !end.overlay && end.title.length > 0, JSON.stringify(end));
-
-// 8. 空格开新局
+// 4. 键盘：1 = 危险
+await c.evaluate('__mjReadNext(); 1');
+await c.sleep(500);
+await c.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true })); 1`);
+await c.sleep(200);
+check('键盘 1 作答', (await c.evaluate('__mjRead().state')) === 'revealed');
 await c.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true })); 1`);
 await c.sleep(500);
-const nr = JSON.parse(await c.evaluate(`JSON.stringify({
-  over: __mjRead().over, my: __mjRead().my.length, wall: __mjRead().wall.length,
-  round: document.getElementById('rdRound').textContent, overlay: document.getElementById('readOver').hidden,
-})`));
-ok('空格开新局并清掉结果', !nr.over && nr.my === 14 && nr.wall === 81 && nr.overlay, JSON.stringify(nr));
+const s4 = JSON.parse(await c.evaluate(`JSON.stringify({ state: __mjRead().state, no: document.getElementById('rdNo').textContent })`));
+check('空格进入下一题', s4.state === 'question' && s4.no.startsWith('第 '), s4.no);
 
-// 9. 切回拆搭，状态还在
+// 5. 题面平衡：Node 侧直接跑 makeScenario（纯函数，不碰 DOM）
+let bal = { danger: 0, total: 0 };
+for (let i = 0; i < 40; i++) {
+  const sc = makeScenario(1000 + i * 37);
+  if (!sc) continue;
+  bal.total++;
+  if (sc.danger) bal.danger++;
+}
+const ratio = bal.total ? bal.danger / bal.total : 0;
+check('题面平衡（危险题 30%–70%）', ratio >= 0.3 && ratio <= 0.7, `${bal.danger}/${bal.total}`);
+
+// 6. 切回拆搭，原局还在
 await c.evaluate("document.getElementById('modeTrain').click(); 1");
-await c.sleep(400);
-const back = JSON.parse(await c.evaluate(`JSON.stringify({
-  area: document.getElementById('readArea').hidden,
-  coach: document.getElementById('coach').hidden,
-  hand: document.getElementById('hand').children.length,
+await c.sleep(600);
+const s5 = JSON.parse(await c.evaluate(`JSON.stringify({
+  readHidden: document.getElementById('readArea').hidden,
+  hand: document.querySelectorAll('#hand .tile').length,
+  judged: __mj.state.judged,
 })`));
-ok('切回拆搭恢复原界面', back.area && !back.coach && back.hand === 14, JSON.stringify(back));
+check('切回拆搭后摇铃区隐藏', s5.readHidden === true);
+check('拆搭手牌仍在', s5.hand === 14, String(s5.hand));
 
-const errors = c.logs.filter((l) => l.type === 'error' || /Uncaught/.test(l.text || ''));
-ok('无控制台错误', errors.length === 0, JSON.stringify(errors).slice(0, 200));
+check('无控制台错误', c.logs.length === 0, JSON.stringify(c.logs.slice(0, 2)));
 
-for (const [name, pass, extra] of out) console.log(pass ? '  ok  ' : '  FAIL', name, pass ? '' : extra);
-const failed = out.filter((x) => !x[1]);
-console.log(`\n${failed.length ? 'FAILED' : 'PASS'} ${out.length - failed.length}/${out.length}`);
+console.log(results.join('\n'));
+console.log('PASS', results.filter((r) => r.startsWith('PASS')).length, '/', results.length);
 await c.close();
-process.exit(failed.length ? 1 : 0);
+process.exit(results.some((r) => r.startsWith('FAIL')) ? 1 : 0);

@@ -28,9 +28,10 @@ const els = {
   favCount: $('favCount'), favClear: $('favClear'), favClose: $('favClose'),
   modeTrain: $('modeTrain'), modeRead: $('modeRead'),
   trainArea: $('trainArea'), readArea: $('readArea'),
-  rdHand: $('rdHand'), oppHand: $('oppHand'), rdOppRiver: $('rdOppRiver'), rdMyRiver: $('rdMyRiver'),
-  rdRound: $('rdRound'), rdWall: $('rdWall'), rdTurn: $('rdTurn'), rdTag: $('rdTag'),
-  cheatBtn: $('cheatBtn'), readOver: $('readOver'), roTitle: $('roTitle'), roSub: $('roSub'), roNext: $('roNext'),
+  rdHand: $('rdHand'), oppHand: $('oppHand'), rdOppRiver: $('rdOppRiver'),
+  rdNo: $('rdNo'), rdKnock: $('rdKnock'), rdRate: $('rdRate'), rdTag: $('rdTag'),
+  quizQ: $('quizQ'), ansDanger: $('ansDanger'), ansSafe: $('ansSafe'), nextQ: $('nextQ'),
+  rdFb: $('rdFb'),
 };
 
 const VERDICT_LABEL = { best: '最优', good: '优', sub: '次优', wrong: '退向听' };
@@ -1316,14 +1317,14 @@ document.addEventListener('keydown', (e) => {
   if (modalOpen) return;
   // 摇铃模式有自己的按键：空格新一局、R 重打、C 看牌
   if (mode === 'read') {
+    if (e.key === '1') { readMode.answer('danger'); return; }
+    if (e.key === '2') { readMode.answer('safe'); return; }
     if (e.code === 'Space' || e.key === ' ') {
       if (onButton) return;
       e.preventDefault();
-      readMode.newRound();
+      if (readMode.state.state === 'revealed') readMode.next();
       return;
     }
-    if (e.key === 'r' || e.key === 'R') { readMode.replay(); return; }
-    if (e.key === 'c' || e.key === 'C') { readMode.toggleCheat(); return; }
     return;
   }
   if (e.code === 'Space' || e.key === ' ') {
@@ -1351,11 +1352,10 @@ let mode = 'train';
 
 const readMode = createReadMode(
   {
-    area: els.readArea, hand: els.rdHand, oppHand: els.oppHand,
-    oppRiver: els.rdOppRiver, myRiver: els.rdMyRiver,
-    round: els.rdRound, wall: els.rdWall, turn: els.rdTurn, tag: els.rdTag,
-    cheat: els.cheatBtn, over: els.readOver, overTitle: els.roTitle, overSub: els.roSub,
-    next: els.roNext,
+    area: els.readArea, hand: els.rdHand, oppHand: els.oppHand, oppRiver: els.rdOppRiver,
+    no: els.rdNo, knock: els.rdKnock, rate: els.rdRate, tag: els.rdTag,
+    quizQ: els.quizQ, ansDanger: els.ansDanger, ansSafe: els.ansSafe, nextQ: els.nextQ,
+    fb: els.rdFb,
   },
   { toast },
 );
@@ -1415,4 +1415,6 @@ window.__mj = {
 // 摇铃模式：给自动化测试用
 window.__mjRead = () => readMode.state;
 window.__mjMode = setMode;
-window.__mjReadStart = (seed) => readMode.startSeed(seed);
+window.__mjReadStart = (seed) => readMode.loadSeed(seed);
+window.__mjReadNext = () => readMode.next();
+window.__mjAnswer = (c) => readMode.answer(c);

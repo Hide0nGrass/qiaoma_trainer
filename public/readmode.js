@@ -1,38 +1,111 @@
-// 摇铃模式：一个按最优出张打牌的对手，他敲之后你来读他的听牌、避开点炮。
+// 摇铃练习：他敲牌之后的读牌二选一。
 //
-// M1 范围：单对手、门清、不带吃碰杠；他打完整条路径并在第一次听牌时敲，
-// 敲后手牌冻结（敲麻规则：敲后摸到不能和的牌只能原样打出）。读牌概率面板在 M2。
-import { tileName, countsOf, isWin, shanten, analyzeHand } from '../engine.mjs';
+// 每题：模拟出一个「已经敲了」的对手（牌河 + 冻结的 13 张），发我 13 张手牌，
+// 指定其中一张问「打这张出去，危不危险」，我点危险 / 不危险，立刻判分并揭底。
+//
+// 题目是平衡的：一半来自他真正的听张（危险），一半不在他的听张里（不危险），
+// 否则一路点「不危险」也能有八成正确率，练不出东西。
+import { tileName } from '../engine.mjs';
 import { mulberry32, shuffle, newDeck } from '../opponent.mjs';
+import { simulateRound } from '../opponent.mjs';
 import { faceSVG } from './tiles.js';
 
-export function createReadMode(els, { toast, onRoundEnd } = {}) {
+const KINDS = 27;
+const STAT_KEY = 'qiaoma.readquiz.v1';
+
+function counts(arr) {
+  const c = new Array(KINDS).fill(0);
+  for (const t of arr) c[t]++;
+  return c;
+}
+
+/** 用种子造一道题；失败返回 null（那局他没敲） */
+export function makeScenario(seed) {
+  const sim = simulateRound(seed, 16);
+  if (sim.knockAt < 0 || !sim.waits?.length || !sim.frozenHand) return null;
+
+  const rnd = mulberry32((seed * 2654435761) >>> 0);
+  const discards = sim.path.map((x) => x.discard);
+  const visible = counts(discards);
+  const waitsTiles = sim.waits.map((w) => w.tile);
+  const isWait = new Set(waitsTiles);
+
+  // 他的手牌 + 牌河是「已知」的，牌池里剩下的才是能发给我的
+  const used = counts([...sim.frozenHand, ...discards]);
+
+  const pickFrom = (pool) => (pool.length ? pool[Math.floor(rnd() * pool.length)] : null);
+
+  // 一半问「他真在等的牌」，一半问「他不要的牌」
+  const wantDanger = rnd() < 0.5;
+  let q = null;
+  if (wantDanger) {
+    const pool = [];
+    for (const t of waitsTiles) if (used[t] < 4) pool.push(t);
+    q = pickFrom(pool);
+  }
+  if (q === null) {
+    const pool = [];
+    for (let t = 0; t < KINDS; t++) if (!isWait.has(t) && used[t] < 4) pool.push(t);
+    q = pickFrom(pool);
+  }
+  if (q === null) return null;
+
+  // 剩下的牌里发 12 张给我，凑成 13 张
+  const bag = [];
+  for (let t = 0; t < KINDS; t++) {
+    const n = 4 - used[t] - (t === q ? 1 : 0);
+    for (let i = 0; i < n; i++) bag.push(t);
+  }
+  shuffle(bag, rnd);
+  const hand = [q, ...bag.slice(0, 12)].sort((a, b) => a - b);
+
+  return {
+    seed,
+    hand,
+    q,
+    qIdx: hand.indexOf(q),
+    danger: isWait.has(q),
+    discards,
+    knockTurn: sim.path.length,
+    frozen: sim.frozenHand,
+    waits: waitsTiles,
+    visible: counts(hand).map((n, t) => Math.min(4, n + visible[t])),
+  };
+}
+
+export function createReadMode(els, { toast } = {}) {
   const R = {
     on: false,
-    seed: 0,
-    round: 0,
-    my: [],
-    his: [],
-    wall: [],
-    myRiver: [],
-    hisRiver: [],
-    knocked: false,
-    knockTurn: 0,
-    frozen: [],
-    turn: 'me',
-    over: false,
-    busy: false,
-    cheat: false,
-    turnNo: 0,
-    result: '',
+    no: 0,
+    right: 0,
+    total: 0,
+    streak: 0,
+    best: 0,
+    scenario: null,
+    state: 'idle',     // idle | question | revealed
+    answer: null,
+    showHand: false,
   };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(STAT_KEY) || '{}');
+    R.total = saved.total | 0;
+    R.right = saved.right | 0;
+    R.best = saved.best | 0;
+  } catch { /* 隐私模式 */ }
+
+  function saveStats() {
+    try {
+      localStorage.setItem(STAT_KEY, JSON.stringify({ total: R.total, right: R.right, best: R.best }));
+    } catch { /* ignore */ }
+  }
 
   /* ---------- 渲染 ---------- */
 
-  function tileEl(tile, idx, { drawn = false, small = false } = {}) {
+  function tileEl(tile, { small = false, mark = false, idx = -1 } = {}) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'tile' + (drawn ? ' drawn' : '') + (small ? ' sm' : '');
+    b.className = 'tile' + (small ? ' sm' : '') + (mark ? ' q' : '');
     b.dataset.tile = String(tile);
     if (idx >= 0) b.dataset.idx = String(idx);
     b.setAttribute('aria-label', tileName(tile));
@@ -48,183 +121,128 @@ export function createReadMode(els, { toast, onRoundEnd } = {}) {
   }
 
   function paint() {
-    const frag = document.createDocumentFragment();
-    const n = R.my.length;
-    const main = n === 14 ? 13 : n;
-    for (let i = 0; i < main; i++) frag.appendChild(tileEl(R.my[i], i));
-    if (n === 14) frag.appendChild(tileEl(R.my[13], 13, { drawn: true }));
-    els.hand.replaceChildren(frag);
-    els.hand.classList.toggle('waiting', R.turn !== 'me' || R.over);
+    const sc = R.scenario;
+    if (!sc) return;
+    const revealed = R.state === 'revealed';
 
+    // 他的手牌：答完才翻开
     const his = document.createDocumentFragment();
-    for (let i = 0; i < R.his.length; i++) {
-      his.appendChild(R.cheat ? tileEl(R.his[i], -1, { small: true }) : backEl());
+    for (const t of sc.frozen) {
+      his.appendChild(revealed ? tileEl(t, { small: true }) : backEl());
     }
     els.oppHand.replaceChildren(his);
 
+    // 牌河 + 敲的标记
     const riv = [];
-    R.hisRiver.forEach((t, i) => {
-      riv.push(tileEl(t, -1, { small: true }));
-      if (R.knocked && i + 1 === R.knockTurn) {
+    sc.discards.forEach((t, i) => {
+      riv.push(tileEl(t, { small: true }));
+      if (i + 1 === sc.knockTurn) {
         const sp = document.createElement('span');
         sp.className = 'knock-sep';
         sp.textContent = '敲';
-        sp.title = '他从这里开始手牌冻结';
+        sp.title = '从这里开始他手牌冻结';
         riv.push(sp);
       }
     });
     els.oppRiver.replaceChildren(...riv);
-    els.myRiver.replaceChildren(...R.myRiver.map((t) => tileEl(t, -1, { small: true })));
 
-    els.round.textContent = `第 ${R.round} 局`;
-    els.wall.textContent = `牌墙 ${R.wall.length} 张`;
-    els.turn.textContent = R.over ? '本局结束' : R.turn === 'me' ? '轮到你' : '他在摸打…';
-    els.tag.textContent = R.knocked ? `已敲 · 第 ${R.knockTurn} 手` : '门清 · 未敲';
-    els.tag.classList.toggle('knocked', R.knocked);
-    els.cheat.classList.toggle('on', R.cheat);
-    els.cheat.setAttribute('aria-checked', String(R.cheat));
+    // 我的手牌，问题牌描金
+    const frag = document.createDocumentFragment();
+    sc.hand.forEach((t, i) => {
+      const el = tileEl(t, { mark: i === sc.qIdx });
+      if (i === sc.qIdx) el.title = '问的就是这张';
+      frag.appendChild(el);
+    });
+    els.hand.replaceChildren(frag);
+
+    els.no.textContent = `第 ${R.no} 题`;
+    els.knock.textContent = `他第 ${sc.knockTurn} 手敲`;
+    els.rate.textContent = R.total ? `正确 ${R.right}/${R.total} · ${Math.round((R.right / R.total) * 100)}%` : '正确 —';
+    els.tag.textContent = revealed ? `他听 ${sc.waits.map(tileName).join(' / ')}` : '已敲 · 手牌冻结';
+    els.tag.classList.toggle('knocked', true);
+
+    if (els.quizQ) {
+      els.quizQ.innerHTML = revealed
+        ? `打 <b>${tileName(sc.q)}</b> 出去${sc.danger ? '会点炮' : '是安全的'}`
+        : `打 <b>${tileName(sc.q)}</b> 出去，危不危险？`;
+    }
+    els.ansDanger.hidden = revealed;
+    els.ansSafe.hidden = revealed;
+    els.nextQ.hidden = !revealed;
+    els.ansDanger.classList.toggle('picked', R.answer === 'danger');
+    els.ansSafe.classList.toggle('picked', R.answer === 'safe');
   }
 
-  function banner(kind, title, sub) {
-    els.over.hidden = false;
-    els.over.className = `read-over ${kind}`;
-    els.overTitle.textContent = title;
-    els.overSub.textContent = sub;
-  }
-
-  function render() {
-    paint();
-  }
-
-  function finish(kind) {
-    R.over = true;
-    R.turn = 'none';
-    R.result = kind;
-    paint();
-    if (kind === 'me') banner('win', '自摸', `第 ${R.turnNo} 手，牌墙剩 ${R.wall.length} 张`);
-    else if (kind === 'his') banner('lose', '他自摸了', `他第 ${R.knockTurn} 手敲，第 ${R.turnNo} 手自摸`);
-    else banner('draw', '荒牌', '牌墙摸完，谁也没和');
-    onRoundEnd?.(R);
+  function paintFeedback() {
+    const sc = R.scenario;
+    const correct = (R.answer === 'danger') === sc.danger;
+    const cls = correct ? 'ok' : 'bad';
+    const waits = sc.waits.map(tileName).join(' / ');
+    els.fb.hidden = false;
+    els.fb.className = `feedback ${cls}`;
+    els.fb.innerHTML =
+      `<span class="fb-mark">${correct ? '对' : '错'}</span>` +
+      `<span class="fb-body">${sc.danger ? '他确实在等这张' : '这张不在他的听张里'}` +
+      `（他听 ${waits}）。这手牌他第 ${sc.knockTurn} 手敲，牌河里共 ${sc.discards.length} 张弃牌。</span>` +
+      `<span class="fb-score">连对 ${R.streak} · 最长 ${R.best}</span>`;
   }
 
   /* ---------- 流程 ---------- */
 
-  function start(seed) {
-    R.seed = seed >>> 0;
-    const rnd = mulberry32(R.seed);
-    const deck = shuffle(newDeck(), rnd);
-    R.my = deck.slice(0, 13).sort((a, b) => a - b);
-    R.his = deck.slice(13, 26).sort((a, b) => a - b);
-    R.wall = deck.slice(26);
-    R.myRiver = [];
-    R.hisRiver = [];
-    R.knocked = false;
-    R.knockTurn = 0;
-    R.frozen = [];
-    R.over = false;
-    R.busy = false;
-    R.turnNo = 0;
-    R.result = '';
-    R.turn = 'me';
-    els.over.hidden = true;
-    drawMine();
+  function nextQuestion(seed) {
+    let sc = null;
+    let s = seed >>> 0;
+    for (let i = 0; i < 60 && !sc; i++) sc = makeScenario((s + i * 7919) >>> 0);
+    if (!sc) { toast?.('没造出题，再试一次'); return; }
+    R.scenario = sc;
+    R.state = 'question';
+    R.answer = null;
+    R.no++;
+    els.fb.hidden = true;
+    paint();
   }
 
-  function drawMine() {
-    if (R.over) return;
-    if (!R.wall.length) return finish('draw');
-    R.my.push(R.wall.pop());
-    R.turnNo++;
-    paint();
-    if (isWin(countsOf(R.my))) finish('me');
-  }
-
-  function myDiscard(idx) {
-    if (!R.on || R.over || R.busy || R.turn !== 'me') return;
-    if (R.my.length !== 14) return;
-    const tile = R.my[idx];
-    if (tile === undefined) return;
-    R.my.splice(idx, 1);
-    R.my.sort((a, b) => a - b);          // 打出的那张不一定是刚摸的，打完重新理牌
-    R.myRiver.push(tile);
-    R.turn = 'him';
-    R.busy = true;
-    paint();
-    setTimeout(hisTurn, 380);
-  }
-
-  function hisTurn() {
-    if (R.over) { R.busy = false; return; }
-    if (!R.wall.length) { R.busy = false; return finish('draw'); }
-
-    const t = R.wall.pop();
-    R.turnNo++;
-
-    // 敲后冻结：摸什么打什么
-    if (R.knocked) {
-      if (isWin(countsOf([...R.frozen, t]))) {
-        R.hisRiver.push(t);
-        R.busy = false;
-        return finish('his');
-      }
-      R.hisRiver.push(t);
-      R.turn = 'me';
-      R.busy = false;
-      paint();
-      return drawMine();
+  function answer(choice) {
+    if (R.state !== 'question') return;
+    const sc = R.scenario;
+    R.answer = choice;
+    R.state = 'revealed';
+    const correct = (choice === 'danger') === sc.danger;
+    R.total++;
+    if (correct) {
+      R.right++;
+      R.streak++;
+      if (R.streak > R.best) R.best = R.streak;
+    } else {
+      R.streak = 0;
     }
-
-    const h14 = [...R.his, t];
-    if (isWin(countsOf(h14))) {
-      R.hisRiver.push(t);
-      R.busy = false;
-      return finish('his');
-    }
-    const best = analyzeHand(h14)[0];
-    const i = h14.indexOf(best.tile);
-    h14.splice(i, 1);
-    R.his = h14.sort((a, b) => a - b);
-    R.hisRiver.push(best.tile);
-
-    if (shanten(countsOf(R.his)) === 0) {
-      R.knocked = true;
-      R.knockTurn = R.hisRiver.length;
-      R.frozen = R.his.slice();
-      paint();
-      toast?.('他敲了 —— 手牌冻结，之后只会摸什么打什么');
-    }
-
-    R.turn = 'me';
-    R.busy = false;
+    saveStats();
     paint();
-    drawMine();
+    paintFeedback();
   }
 
   /* ---------- 事件 ---------- */
 
+  els.ansDanger.addEventListener('click', () => answer('danger'));
+  els.ansSafe.addEventListener('click', () => answer('safe'));
+  els.nextQ.addEventListener('click', () => nextQuestion((Math.random() * 0xffffffff) >>> 0));
   els.hand.addEventListener('click', (e) => {
     const el = e.target.closest('.tile');
-    if (!el || el.dataset.idx === undefined) return;
-    myDiscard(Number(el.dataset.idx));
+    if (!el) return;
+    if (Number(el.dataset.idx) === R.scenario?.qIdx) toast?.('问的就是这张，点下面的「危险 / 不危险」');
   });
-  els.cheat.addEventListener('click', () => { R.cheat = !R.cheat; paint(); });
-  els.next?.addEventListener('click', () => { R.round++; start((Math.random() * 0xffffffff) >>> 0); });
 
   return {
     get state() { return R; },
+    get active() { return R.on; },
     enter() {
       R.on = true;
       els.area.hidden = false;
-      if (!R.my.length) {
-        R.round = Math.max(1, R.round);
-        start((Math.random() * 0xffffffff) >>> 0);
-      }
+      if (!R.scenario) nextQuestion((Math.random() * 0xffffffff) >>> 0);
     },
     leave() { R.on = false; els.area.hidden = true; },
-    newRound() { R.round = Math.max(1, R.round); R.round++; start((Math.random() * 0xffffffff) >>> 0); },
-    startSeed(seed) { R.round = Math.max(1, R.round); start(seed); },
-    replay() { if (R.seed) start(R.seed); },
-    toggleCheat() { R.cheat = !R.cheat; paint(); },
-    get active() { return R.on; },
+    next() { nextQuestion((Math.random() * 0xffffffff) >>> 0); },
+    answer,
+    loadSeed(seed) { nextQuestion(seed); },
   };
 }
