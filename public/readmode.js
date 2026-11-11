@@ -61,7 +61,7 @@ function riverClues(sc, tile) {
     const max = Math.max(...bySuit);
     if (mine === max && mine >= 3) soft.push(`他打得最多的是${SUITS[s]}（${mine}/${sc.discards.length} 张）`);
     else if (mine === 0) soft.push(`他一张${SUITS[s]}都没打过`);
-    else if (max >= 5 && mine < max) soft.push(`${SUITS[bySuit.indexOf(max)]}打得最多，${SUITS[s]}很少碰`);
+    else if (max >= 5 && mine < max) soft.push(`他${SUITS[bySuit.indexOf(max)]}打得最多，${SUITS[s]}很少打`);
   }
   return { hard, soft };
 }
