@@ -1154,8 +1154,10 @@ kbd {
 
 /* ---------- 摇铃模式 ---------- */
 .read-area {
-  --rt: 42px;
-  --rth: 58px;
+  --rt: 48px;
+  --rth: 66px;
+  --mt: 38px;
+  --mth: 52px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1214,9 +1216,9 @@ kbd {
   color: var(--muted);
   opacity: .7;
 }
-.my-river { padding: 4px 2px 0; }
-.my-river .tile { width: var(--rt); height: var(--rth); border-radius: 5px; }
-.my-river .tile svg { padding: 5%; }
+#rdMyRiver { padding: 4px 2px 0; min-height: var(--mth); }
+#rdMyRiver .tile { width: var(--mt); height: var(--mth); border-radius: 4px; }
+#rdMyRiver .tile svg { padding: 4%; }
 .my-panel { display: flex; flex-direction: column; gap: 10px; }
 .my-panel .hand-wrap { padding: 26px 0 4px; }
 .hand.waiting { opacity: .82; pointer-events: none; }
@@ -1323,7 +1325,7 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 }
 
 @media (max-width: 560px) {
-  .read-area { --rt: 26px; --rth: 36px; }
+  .read-area { --rt: 26px; --rth: 35px; --mt: 21px; --mth: 28px; }
   .opp-hand { gap: 4px; }
   .opp-river, .my-river { gap: 3px; }
 }
