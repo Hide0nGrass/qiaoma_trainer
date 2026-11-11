@@ -398,7 +398,9 @@ export function createReadMode(els, { toast } = {}) {
         break;
       case 'deal':
         mark = '点炮';
-        why = `${readBit}——你打了，他荣和。${hardBit}`;
+        why = R.missedByModel
+          ? `${readBit}——你按牌河打了出去，可这张他真在等：牌河漏判了。这种炮不算你答错，但确实被他荣和。${hardBit}`
+          : `${readBit}——你打了，他荣和。${hardBit}`;
         break;
       default:
         mark = '过';
@@ -469,6 +471,8 @@ export function createReadMode(els, { toast } = {}) {
     R.rank = R.infer.rank.get(tile) || KINDS;
     R.modelDanger = R.rank <= DANGER_TOPK;     // 判分依据：牌河推断
     R.answer = null;
+    R.result = null;          // 每题重置，免得上一题的结局漏到这一题
+    R.missedByModel = false;
   }
 
   /** 手动翻开 / 收起对家 13 张；只影响显示，不参与判分 */
@@ -520,35 +524,39 @@ export function createReadMode(els, { toast } = {}) {
     const edge = !agree && (R.rank === DANGER_TOPK || R.rank === DANGER_TOPK + 1);
     R.qi = R.pos + 1;
 
+    // 先按「牌河判断」记账
     if (agree) {
       R.total++;
       R.right++;
       R.streak++;
       if (R.streak > R.best) R.best = R.streak;
       R.result = 'ok';
-      if (!wantDanger) R.myRiver.push(R.dealtTile);
-      settle();
     } else if (edge) {
       R.result = 'edge';
-      if (!wantDanger) R.myRiver.push(R.dealtTile);
-      settle();
     } else {
       R.total++;
       R.streak = 0;
-      if (!wantDanger) {
-        R.myRiver.push(R.dealtTile);
-        if (R.danger) {
-          // 牌河没排进危险区，但真值偏偏是听张 —— 点炮
-          R.state = 'over';
-          R.result = 'deal';
-        } else {
-          R.result = 'overread';
-          settle();
-        }
+    }
+
+    // 再让真值说话：只要你把这张打到牌河里，他真在等就会荣和——
+    // 不管牌河判断对不对（牌河漏判时玩家是「按模型答对」，但仍然点炮）。
+    if (!wantDanger) {
+      R.myRiver.push(R.dealtTile);
+      if (R.danger) {
+        R.state = 'over';
+        R.result = 'deal';
+        R.missedByModel = agree;   // 牌河没估到，这炮不算玩家答错
+      } else if (R.result === 'ok' || R.result === 'edge') {
+        settle();
       } else {
-        R.result = 'conservative';
+        R.result = 'overread';
         settle();
       }
+    } else if (R.result !== 'ok' && R.result !== 'edge') {
+      R.result = 'conservative';
+      settle();
+    } else {
+      settle();
     }
     saveStats();
     paint();
