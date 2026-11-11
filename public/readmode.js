@@ -198,7 +198,10 @@ export function createReadMode(els, { toast } = {}) {
     const over = R.state === 'over';
     els.ansDanger.hidden = R.state !== 'question';
     els.ansSafe.hidden = R.state !== 'question';
-    els.nextQ.hidden = !over;
+    els.nextQ.hidden = R.state === 'question';
+    if (!els.nextQ.hidden) {
+      els.nextQ.innerHTML = (R.state === 'over' ? '下一局' : '继续') + ' <kbd>Space</kbd>';
+    }
     els.ansDanger.classList.toggle('picked', R.answer === 'danger');
     els.ansSafe.classList.toggle('picked', R.answer === 'safe');
   }
@@ -298,14 +301,9 @@ export function createReadMode(els, { toast } = {}) {
     }
     paint();
     paintFeedback();
-    if (R.state === 'revealed') {
-      // 答对后自动进下一张；按 1/2 也能直接抢先
-      R.timer = setTimeout(() => advance(), 900);
-    }
   }
 
   function advance() {
-    clearTimeout(R.timer);
     if (R.state !== 'revealed') return;
     if (R.qi >= R.scenario.bag.length) { R.state = 'over'; R.result = 'clear'; paint(); return; }
     R.dealtTile = R.scenario.bag[R.qi];
@@ -320,7 +318,10 @@ export function createReadMode(els, { toast } = {}) {
 
   els.ansDanger.addEventListener('click', () => answer('danger'));
   els.ansSafe.addEventListener('click', () => answer('safe'));
-  els.nextQ.addEventListener('click', () => startRound((Math.random() * 0xffffffff) >>> 0));
+  els.nextQ.addEventListener('click', () => {
+    if (R.state === 'over') startRound((Math.random() * 0xffffffff) >>> 0);
+    else advance();
+  });
 
   return {
     get state() { return R; },
