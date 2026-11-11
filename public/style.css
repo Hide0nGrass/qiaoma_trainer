@@ -1289,3 +1289,8 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 .fb-body { flex: 1; }
 .fb-body b { font-weight: 600; }
 .fb-score { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.opp-grp { display: inline-flex; gap: 3px; margin-right: 12px; }
+.opp-grp:last-child { margin-right: 0; }
+.opp-grp.wait { padding: 0 4px 3px; border-bottom: 2px solid var(--amber); background: rgba(154, 107, 31, .08); border-radius: 3px 3px 0 0; }
+.fb-note { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }

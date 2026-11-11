@@ -54,7 +54,7 @@ check('揭底状态', s2.state === 'revealed');
 check('揭底后他的牌翻开', s2.faces === 13, String(s2.faces));
 check('反馈出现', s2.fb === true);
 check('答对反馈是 ok', s2.fbClass.includes('ok') && s2.fbText.startsWith('对'), s2.fbText.slice(0, 24));
-check('反馈给出他的听张', /他听|听 /.test(s2.fbText));
+check('反馈讲清原因（哪一组在等什么）', /只等/.test(s2.fbText) && /(补进|补不上)/.test(s2.fbText), s2.fbText.slice(0, 60));
 check('「下一题」出现', s2.nextShown === true);
 check('选择按钮收起', s2.ansHidden === true);
 check('统计 +1', s2.total >= 1 && s2.right >= 1, `${s2.right}/${s2.total}`);
