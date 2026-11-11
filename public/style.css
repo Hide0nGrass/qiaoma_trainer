@@ -1303,6 +1303,7 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 .opp-grp { display: inline-flex; gap: 3px; margin-right: 12px; }
 .opp-grp:last-child { margin-right: 0; }
 .opp-grp.wait { padding: 0 4px 3px; border-bottom: 2px solid var(--amber); background: rgba(154, 107, 31, .08); border-radius: 3px 3px 0 0; }
+.opp-grp.peek-grp { margin-right: 16px; }
 .fb-note { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 
 .quiz { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 22px; padding: 4px 0 6px; }

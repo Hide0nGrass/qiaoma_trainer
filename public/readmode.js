@@ -285,9 +285,12 @@ export function createReadMode(els, { toast } = {}) {
         his.appendChild(grp);
       }
     } else if (peeked) {
-      // 手动翻看：只摊牌面，不按搭子分组、不标等待那组，尽量少给结构提示
-      for (const t of [...sc.frozen].sort((a, b) => a - b)) {
-        his.appendChild(tileEl(t, { small: true }));
+      // 手动翻看：按搭子分开摆、组间留空，方便看清结构；但不标哪组在等（不给答案）
+      for (const g of hisGroups(sc)) {
+        const grp = document.createElement('span');
+        grp.className = 'opp-grp peek-grp';
+        for (const t of g.tiles) grp.appendChild(tileEl(t, { small: true }));
+        his.appendChild(grp);
       }
     } else {
       for (let i = 0; i < sc.frozen.length; i++) his.appendChild(backEl());
