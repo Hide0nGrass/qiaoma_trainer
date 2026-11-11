@@ -29,7 +29,7 @@ const els = {
   modeTrain: $('modeTrain'), modeRead: $('modeRead'),
   trainArea: $('trainArea'), readArea: $('readArea'),
   oppHand: $('oppHand'), rdOppRiver: $('rdOppRiver'), rdMyRiver: $('rdMyRiver'), quizTile: $('quizTile'),
-  rdNo: $('rdNo'), rdKnock: $('rdKnock'), rdRate: $('rdRate'), rdTag: $('rdTag'),
+  rdNo: $('rdNo'), rdKnock: $('rdKnock'), rdRate: $('rdRate'), rdTag: $('rdTag'), rdPeek: $('rdPeek'),
   quizQ: $('quizQ'), ansDanger: $('ansDanger'), ansSafe: $('ansSafe'), nextQ: $('nextQ'),
   rdFb: $('rdFb'),
 };
@@ -1319,6 +1319,7 @@ document.addEventListener('keydown', (e) => {
   if (mode === 'read') {
     if (e.key === '1') { readMode.answer('danger'); return; }
     if (e.key === '2') { readMode.answer('safe'); return; }
+    if (e.key === 'c' || e.key === 'C') { readMode.peek(); return; }
     if (e.code === 'Space' || e.key === ' ') {
       if (onButton) return;
       e.preventDefault();
@@ -1354,7 +1355,7 @@ const readMode = createReadMode(
   {
     area: els.readArea, oppHand: els.oppHand, oppRiver: els.rdOppRiver, myRiver: els.rdMyRiver,
     quizTile: els.quizTile,
-    no: els.rdNo, knock: els.rdKnock, rate: els.rdRate, tag: els.rdTag,
+    no: els.rdNo, knock: els.rdKnock, rate: els.rdRate, tag: els.rdTag, peek: els.rdPeek,
     quizQ: els.quizQ, ansDanger: els.ansDanger, ansSafe: els.ansSafe, nextQ: els.nextQ,
     fb: els.rdFb,
   },

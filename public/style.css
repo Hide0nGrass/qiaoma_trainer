@@ -1181,6 +1181,8 @@ kbd {
 .opp-name { font-size: 11px; color: var(--muted); letter-spacing: .1em; white-space: nowrap; flex: 0 0 auto; }
 .opp-hand { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
 .opp-tag { font-size: 11.5px; color: var(--muted); }
+.peek { font-size: 11px; padding: 3px 8px; }
+.peek[aria-pressed="true"] { color: var(--red, #b4423a); }
 .opp-tag b { font-weight: 600; color: var(--ink-3); }
 .opp-tag.knocked { color: var(--red); font-weight: 600; }
 

@@ -136,6 +136,7 @@ export function createReadMode(els, { toast } = {}) {
     modelDanger: false,  // 牌河说危险（rank <= DANGER_TOPK）——判分依据
     danger: false,       // 真值：这张确实是他的听张（只决定会不会被和）
     myRiver: [],
+    peek: false,         // 手动翻开对家 13 张（只给牌面，不标搭子）
     streak: 0,
     best: 0,
     total: 0,
@@ -272,6 +273,7 @@ export function createReadMode(els, { toast } = {}) {
     const sc = R.scenario;
     if (!sc) return;
     const shown = R.state === 'over';   // 只有本局结束才翻牌，否则后面的题被剧透
+    const peeked = R.peek && !shown;
 
     const his = document.createDocumentFragment();
     if (shown) {
@@ -281,6 +283,11 @@ export function createReadMode(els, { toast } = {}) {
         if (g.wait) grp.title = `这组在等 ${sc.waits.map(tileName).join(' / ')}`;
         for (const t of g.tiles) grp.appendChild(tileEl(t, { small: true }));
         his.appendChild(grp);
+      }
+    } else if (peeked) {
+      // 手动翻看：只摊牌面，不按搭子分组、不标等待那组，尽量少给结构提示
+      for (const t of [...sc.frozen].sort((a, b) => a - b)) {
+        his.appendChild(tileEl(t, { small: true }));
       }
     } else {
       for (let i = 0; i < sc.frozen.length; i++) his.appendChild(backEl());
@@ -316,6 +323,11 @@ export function createReadMode(els, { toast } = {}) {
     els.tag.innerHTML = shown
       ? `<b>他听 ${sc.waits.map(tileName).join(' / ')}</b>`
       : `<b>已敲 · 手牌冻结</b> · 判定看牌河（前 ${DANGER_TOPK} 名算危险）· 讲解走 DeepSeek`;
+
+    if (els.peek) {
+      els.peek.setAttribute('aria-pressed', String(R.peek));
+      els.peek.innerHTML = (R.peek ? '收起对家牌' : '看对家牌') + ' <kbd>C</kbd>';
+    }
 
     let q = '';
     if (R.state === 'question') q = '这张牌打出去，危不危险？';
@@ -449,6 +461,13 @@ export function createReadMode(els, { toast } = {}) {
     R.answer = null;
   }
 
+  /** 手动翻开 / 收起对家 13 张；只影响显示，不参与判分 */
+  function togglePeek() {
+    if (!R.scenario) return;
+    R.peek = !R.peek;
+    paint();
+  }
+
   function startRound(seed) {
     let sc = null;
     let s = seed >>> 0;
@@ -463,6 +482,7 @@ export function createReadMode(els, { toast } = {}) {
     R.state = 'question';
     R.result = null;
     R.myRiver = [];
+    R.peek = false;   // 每局重新扣上，免得上一局的翻开状态带到新题
     handOut(sc, 0);
     els.fb.hidden = true;
     paint();
@@ -545,6 +565,7 @@ export function createReadMode(els, { toast } = {}) {
 
   els.ansDanger.addEventListener('click', () => answer('danger'));
   els.ansSafe.addEventListener('click', () => answer('safe'));
+  els.peek?.addEventListener('click', togglePeek);
   els.nextQ.addEventListener('click', () => {
     if (R.state === 'over') startRound((Math.random() * 0xffffffff) >>> 0);
     else advance();
@@ -564,6 +585,7 @@ export function createReadMode(els, { toast } = {}) {
       else advance();
     },
     answer,
+    peek: togglePeek,
     loadSeed(seed) { startRound(seed); },
     MAX_Q,
   };
