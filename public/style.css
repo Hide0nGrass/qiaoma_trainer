@@ -1344,3 +1344,6 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
   .feedback .fb-body { max-width: 100%; }
   .feedback .fb-score { flex: 1 1 100%; text-align: right; margin-top: 2px; }
 }
+
+.feedback.blind { border-left-color: var(--muted); }
+.feedback.blind .fb-mark { color: var(--muted); border-color: var(--line-2); }

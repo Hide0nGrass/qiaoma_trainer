@@ -62,6 +62,12 @@ function riverClues(sc, tile) {
   return { hard, soft };
 }
 
+/** 这题从牌河上读得出来吗（有硬线索或倾向线索） */
+function isReadable(sc, tile) {
+  const c = riverClues(sc, tile);
+  return c.hard.length + c.soft.length > 0;
+}
+
 /** 造一局：已敲的对手 + 一串待打的牌（一半危险一半安全） */
 export function makeRound(seed) {
   const sim = simulateRound(seed, MAX_TURNS);
@@ -112,7 +118,8 @@ export function createReadMode(els, { toast } = {}) {
     roundNo: 0,
     scenario: null,
     state: 'question',   // question | revealed | over
-    qi: 0,               // 本局第几张
+    qi: 0,               // 本局已计分的题数
+    pos: 0,              // 当前是牌串里的第几张（含不计分的题）
     answer: null,
     result: null,        // 'clear' | 'deal'
     dealtTile: -1,
@@ -332,8 +339,13 @@ export function createReadMode(els, { toast } = {}) {
     const k = sc.waits.length;
     const shapeBit = shape ? `${glossOf(shape)}，等 ${k} 种牌` : '';
 
+    const blind = R.result === 'blind';
     let why;
-    if (conservative) {
+    if (blind) {
+      why = R.danger
+        ? `${q} 其实正补进他等的${shapeBit ? `那一组（${shapeBit}）` : '那一组'}——这手牌河上没有线索，读不出来，不计分。`
+        : `${q} 其实不在他等的牌里；这手牌河上没有线索，读不出来，不计分。`;
+    } else if (conservative) {
       why = `这张其实是安全的（${shapeBit ? `补不上他${shapeBit}` : '不在他的听张里'}）。${hardBit}你白白扣了一张——没点炮，但连对断了。`;
     } else if (R.state === 'over') {
       why = R.danger
@@ -352,9 +364,9 @@ export function createReadMode(els, { toast } = {}) {
 
     const plainWhy = why.replace(/<[^>]+>/g, '');
     els.fb.hidden = false;
-    els.fb.className = `feedback ${correct ? 'ok' : 'bad'}`;
+    els.fb.className = `feedback ${blind ? 'blind' : correct ? 'ok' : 'bad'}`;
     els.fb.innerHTML =
-      `<span class="fb-mark">${correct ? '对' : conservative ? '保守' : '错'}</span>` +
+      `<span class="fb-mark">${blind ? '无线索' : correct ? '对' : conservative ? '保守' : '错'}</span>` +
       `<span class="fb-body">` +
       `<span class="fb-ai" hidden></span>` +
       `<span class="fb-local">${why}` +
@@ -382,6 +394,7 @@ export function createReadMode(els, { toast } = {}) {
         resultText: R.state === 'over'
           ? (R.result === 'deal' ? '他荣和，本局结束' : '他没等到，本局结束')
           : conservative ? '没点炮，但连对断了' : '还在继续',
+        readable: R.readable,
         fallback: plainWhy,
       });
     }
@@ -397,12 +410,14 @@ export function createReadMode(els, { toast } = {}) {
     R.scenario = sc;
     R.roundNo++;
     R.qi = 0;
+    R.pos = 0;
     R.state = 'question';
     R.answer = null;
     R.result = null;
     R.myRiver = [];
-    R.dealtTile = sc.bag[0];
+    R.dealtTile = sc.bag[R.pos];
     R.danger = sc.waits.includes(R.dealtTile);
+    R.readable = isReadable(sc, R.dealtTile);
     els.fb.hidden = true;
     paint();
   }
@@ -410,6 +425,14 @@ export function createReadMode(els, { toast } = {}) {
   function answer(choice) {
     if (R.state !== 'question') return;
     R.answer = choice;
+    // 牌河上一点线索都没有的题：不计分、不判点炮（本来就读不出来）
+    if (!R.readable) {
+      R.result = 'blind';
+      R.state = 'revealed';
+      paint();
+      paintFeedback();
+      return;
+    }
     const correct = (choice === 'danger') === R.danger;
     R.total++;
     R.qi++;
@@ -420,7 +443,7 @@ export function createReadMode(els, { toast } = {}) {
       // 说安全就真打出去，说危险就扣下
       if (choice === 'safe') R.myRiver.push(R.dealtTile);
       saveStats();
-      if (R.qi >= MAX_Q || R.qi >= R.scenario.bag.length) {
+      if (R.qi >= MAX_Q || R.pos >= R.scenario.bag.length - 1) {
         R.state = 'over';
         R.result = 'clear';
         R.cleared++;
@@ -448,9 +471,11 @@ export function createReadMode(els, { toast } = {}) {
 
   function advance() {
     if (R.state !== 'revealed') return;
-    if (R.qi >= R.scenario.bag.length) { R.state = 'over'; R.result = 'clear'; paint(); return; }
-    R.dealtTile = R.scenario.bag[R.qi];
+    R.pos++;
+    if (R.pos >= R.scenario.bag.length) { R.state = 'over'; R.result = 'clear'; paint(); return; }
+    R.dealtTile = R.scenario.bag[R.pos];
     R.danger = R.scenario.waits.includes(R.dealtTile);
+    R.readable = isReadable(R.scenario, R.dealtTile);
     R.state = 'question';
     R.answer = null;
     els.fb.hidden = true;
