@@ -1369,3 +1369,7 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 
 .danger-why .why-local { font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
 .danger-why .why-ai { font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+
+.read-area.danger-on .quiz { padding: 0; gap: 12px; }
+.read-area.danger-on .quiz-tile .tile { width: calc(var(--tw) * 1.15); height: calc(var(--th) * 1.15); }
+.read-area.danger-on .danger-why { max-height: 84px; overflow-y: auto; }
