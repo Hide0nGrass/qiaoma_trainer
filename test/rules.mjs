@@ -18,6 +18,8 @@ function tally() {
   };
 }
 
+const V = tally();   // 已见张数梯度
+const R = tally();   // 点数分布
 const T = tally();   // 单张特征
 const N = tally();   // 邻居特征
 let rounds = 0, tiles = 0, hits = 0, waitsAll = 0, waitsLeast = 0, waitsMid = 0;
@@ -69,6 +71,8 @@ for (let seed = 1; seed <= ROUNDS; seed++) {
     const most = !seen[t] && s === maxS && spread >= 2;
 
     T.add('all', y);
+    V.add(String(Math.min(4, vis)), y);
+    R.add(String(rankOf(t) + 1), y);
     if (seen[t] === 1) T.add('own1', y);
     if (seen[t] >= 2) T.add('own2', y);
     if (suji) T.add('suji', y);
@@ -142,6 +146,21 @@ for (const phase of ['early', 'mid', 'late']) {
       console.log(`| ${name} · ${kind === 'te' ? '手切' : '摸切'} | ±${d} | ${(p * 100).toFixed(1)}% | ${(p / base).toFixed(2)}× | ${N.n(k)} |`);
     }
   }
+}
+
+console.log('\n| 这张已见几张（他牌河 + 我手牌） | 是听张的概率 | 样本 |');
+console.log('|---|---|---|');
+for (let v = 0; v <= 4; v++) {
+  const p = V.p(String(v));
+  if (p === null) continue;
+  console.log(`| 已见 ${v} 张 | ${(p * 100).toFixed(1)}% | ${V.n(String(v))} |`);
+}
+
+console.log('\n| 点数 | 是听张的概率 | 样本 |');
+console.log('|---|---|---|');
+for (let r = 1; r <= 9; r++) {
+  const p = R.p(String(r));
+  console.log(`| ${r} | ${(p * 100).toFixed(1)}% | ${R.n(String(r))} |`);
 }
 
 console.log(`\n覆盖：听张落在「少打那门」${(waitsLeast / waitsAll * 100).toFixed(1)}%；听张是「中张 4-6」${(waitsMid / waitsAll * 100).toFixed(1)}%`);

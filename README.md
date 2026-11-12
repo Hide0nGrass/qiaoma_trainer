@@ -205,7 +205,7 @@ test/cdp*.mjs           无 puppeteer 的 CDP 自测与截图
 
 ## 读牌规律
 
-各条读牌直觉的实测命中率（現物、筋、壁、花色、手切/摸切……）与优先级排序写在 [`docs/读牌规律.md`](docs/读牌规律.md)；数字可用 `node test/rules.mjs 600` 复现。
+各条读牌直觉的实测命中率、机制解释与优先级流程写在 [`docs/读牌规律.md`](docs/读牌规律.md)；数字可用 `node test/rules.mjs 600`（主表）和 `node test/rules-suji.mjs 1200`（筋的时机）复现。
 
 ## 测试
 
