@@ -1373,3 +1373,9 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 .read-area.danger-on .quiz { padding: 0; gap: 12px; }
 .read-area.danger-on .quiz-tile .tile { width: calc(var(--tw) * 1.15); height: calc(var(--th) * 1.15); }
 .read-area.danger-on .danger-why { max-height: 84px; overflow-y: auto; }
+
+@media (max-width: 560px) {
+  .read-area.danger-on .danger-why { max-height: 64px; }
+  .read-area.danger-on .quiz-tile .tile { width: calc(var(--tw) * 0.95); height: calc(var(--th) * 0.95); }
+  .read-area.danger-on .danger-list .tile { width: 34px; height: 47px; }
+}
