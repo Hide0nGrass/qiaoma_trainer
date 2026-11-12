@@ -203,6 +203,10 @@ test/newfeat.mjs        结构标注 / 悬停预览 / 收藏 / 错题本
 test/cdp*.mjs           无 puppeteer 的 CDP 自测与截图
 ```
 
+## 读牌规律
+
+各条读牌直觉的实测命中率（現物、筋、壁、花色、手切/摸切……）与优先级排序写在 [`docs/读牌规律.md`](docs/读牌规律.md)；数字可用 `node test/rules.mjs 600` 复现。
+
 ## 测试
 
 ```
