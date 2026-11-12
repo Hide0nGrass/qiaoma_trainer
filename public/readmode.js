@@ -59,9 +59,19 @@ function riverClues(sc, tile) {
     for (const t of sc.discards) bySuit[suitOf(t)]++;
     const mine = bySuit[s];
     const max = Math.max(...bySuit);
-    if (mine === max && mine >= 3) soft.push(`他打得最多的是${SUITS[s]}（${mine}/${sc.discards.length} 张）`);
-    else if (mine === 0) soft.push(`他一张${SUITS[s]}都没打过`);
-    else if (max >= 5 && mine < max) soft.push(`他${SUITS[bySuit.indexOf(max)]}打得最多，${SUITS[s]}很少打`);
+    const min = Math.min(...bySuit);
+    const maxSuit = bySuit.indexOf(max);
+    const minSuit = bySuit.indexOf(min);
+    // 方向：某门打得越少 = 越可能在留 = 越危险；打得越多 = 越可能在拆 = 越安全
+    if (mine === 0) {
+      soft.push(`他一共打了 ${sc.discards.length} 张，一张${SUITS[s]}都没有——这门他大概率在留，整体要当心`);
+    } else if (mine === max && mine >= 3) {
+      soft.push(`${SUITS[s]}打了 ${mine} 张，是他打得最多的一门——他在拆这门，相对安全`);
+    } else if (max >= 5 && mine === min) {
+      soft.push(`${SUITS[s]}只打了 ${mine} 张，是他打得最少的一门——这门更可能在留`);
+    } else if (max >= 5) {
+      soft.push(`他${SUITS[maxSuit]}打得最多（${max} 张）——那是他在拆的门，${SUITS[minSuit]}打得最少`);
+    }
   }
   return { hard, soft };
 }
