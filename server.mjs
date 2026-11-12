@@ -158,6 +158,17 @@ const READ_SYSTEM_PROMPT = [
 
 function buildReadPrompt(p) {
   const pctText = `${Math.round((p.p || 0) * 100)}%`;
+  if (p.mode === 'tile') {
+    return [
+      `他已经敲牌（第 ${p.knockTurn} 手敲），牌河（按打出顺序）：${p.discardsText || '（空）'}`,
+      `用户点开了「危险牌」榜，问的是：${p.tile} 为什么危险（牌河推断约 ${pctText}，27 种里第 ${p.rank || '?'} 危险）`,
+      `牌河线索：${p.cluesText || '没有能证明的线索'}`,
+      p.softText ? `倾向性观察：${p.softText}` : '',
+      `他的真实听张：${p.waitsText || '（未揭晓）'}`,
+      '请用两句讲清：第一句说这张危险在哪（数量、花色方向、时机、形），第二句说下次看什么线索做同样判断。',
+      '不要复述概率数字，不要列表、不要客套。',
+    ].filter(Boolean).join(String.fromCharCode(10));
+  }
   const lines = [
     `他已经敲牌（第 ${p.knockTurn} 手敲），牌河（按打出顺序）：${p.discardsText || '（空）'}`,
     `你手上这张要打出去的是：${p.tile}`,
@@ -184,6 +195,7 @@ async function handleReadCoach(req, res) {
   }
   const clean = (v, n = 200) => String(v ?? '').slice(0, n);
   const payload = {
+    mode: body.mode === 'tile' ? 'tile' : 'answer',
     knockTurn: Number(body.knockTurn) || 0,
     discardsText: clean(body.discardsText, 200),
     tile: clean(body.tile, 8),

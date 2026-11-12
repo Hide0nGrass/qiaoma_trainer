@@ -104,6 +104,7 @@
         <span class="sep"></span>
         <span id="rdRate"></span>
         <span class="flex1"></span>
+        <button class="btn ghost peek" id="rdDanger" type="button" aria-pressed="false" title="列出牌河推断的最危险几张，点一张问 AI 为什么">看危险牌 <kbd>X</kbd></button>
         <button class="btn ghost peek" id="rdPeek" type="button" aria-pressed="false" title="翻开对家 13 张（剧透：想清楚再看）">看对家牌 <kbd>C</kbd></button>
         <span class="opp-tag" id="rdTag"><b>已敲 · 手牌冻结</b> · 判定用本地引擎 · 讲解走 DeepSeek</span>
       </div>
@@ -133,6 +134,12 @@
             <button class="btn" id="nextQ" hidden>下一局 <kbd>Space</kbd></button>
           </div>
         </div>
+      </div>
+
+      <div class="danger-panel" id="rdDangerPanel" hidden>
+        <div class="danger-head" id="rdDangerHead">牌河推断：最危险的几张（点一张问 AI 为什么）</div>
+        <div class="danger-why" id="rdDangerWhy" hidden></div>
+        <div class="danger-list" id="rdDangerList"></div>
       </div>
 
       <div class="feedback" id="rdFb" hidden></div>

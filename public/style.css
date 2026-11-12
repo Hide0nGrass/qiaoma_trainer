@@ -1350,3 +1350,22 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 
 .feedback.blind { border-left-color: var(--muted); }
 .feedback.blind .fb-mark { color: var(--muted); border-color: var(--line-2); }
+
+.danger-panel { display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 2px 0 4px; }
+.danger-head { font-size: 11.5px; color: var(--muted); letter-spacing: .06em; }
+.danger-list { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+.danger-list .tile { width: calc(var(--rt, 42px) * 0.92); height: calc(var(--rth, 58px) * 0.92); cursor: pointer; }
+.danger-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.danger-cell .tile.danger-tile { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.danger-cell .tile.danger-tile:hover { transform: translateY(-3px); }
+.danger-cell.picked .tile.danger-tile { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(154, 107, 31, .18); }
+.danger-pct { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.danger-why { max-width: 82ch; font-size: 13px; line-height: 1.6; color: var(--ink-2); padding: 6px 10px; border-left: 2px solid var(--amber); background: rgba(154, 107, 31, .05); border-radius: 0 4px 4px 0; }
+.danger-why .why-label { font-size: 10px; letter-spacing: .1em; color: var(--amber); margin-right: 6px; }
+
+.read-area.danger-on .quiz-tile .tile { width: calc(var(--tw) * 1.35); height: calc(var(--th) * 1.35); }
+.read-area.danger-on .quiz { gap: 14px; }
+.read-area.danger-on .read-area, .read-area.danger-on { --rt: 38px; --rth: 52px; }
+
+.danger-why .why-local { font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
+.danger-why .why-ai { font-size: 13px; line-height: 1.6; color: var(--ink-2); }

@@ -149,6 +149,8 @@ export function createReadMode(els, { toast } = {}) {
     dealtTile: -1,
     infer: null,         // readRound() 的结果：rank / p
     inferMs: 0,
+    showDanger: false,   // 是否展开「危险牌」榜
+    whyTile: -1,         // 榜单里被点开问 AI 的那张
     p: 0,                // 牌河估的这张被等的概率
     rank: KINDS,         // 牌河里的危险排名（1 最危险）
     modelDanger: false,  // 牌河说危险（rank <= DANGER_TOPK）——判分依据
@@ -249,7 +251,11 @@ export function createReadMode(els, { toast } = {}) {
 
   /* ---------- 渲染 ---------- */
 
-  function tileEl(tile, { small = false, mark = false } = {}) {
+  function escapeHtml(str) {
+  return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function tileEl(tile, { small = false, mark = false } = {}) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'tile' + (small ? ' sm' : '') + (mark ? ' q' : '');
@@ -341,6 +347,7 @@ export function createReadMode(els, { toast } = {}) {
     els.knock.textContent = `他第 ${sc.knockTurn} 手敲`;
     els.rate.textContent = `本局 ${R.qi} / ${MAX_Q} · 连对 ${R.streak}` +
       (R.cleared ? ` · 已逃 ${R.cleared} 局` : '');
+    paintDanger();
     els.tag.innerHTML = shown
       ? `<b>他听 ${sc.waits.map(tileName).join(' / ')}</b>`
       : `<b>已敲 · 手牌冻结</b> · 判定看牌河（前 ${DANGER_TOPK} 名算危险）· 讲解走 DeepSeek`;
@@ -590,11 +597,134 @@ export function createReadMode(els, { toast } = {}) {
     paint();
   }
 
+  /* ---------- 危险牌榜：列出最危险的几张，点一张问 AI 为什么 ---------- */
+
+  let tileWhyAbort = null;
+
+  function paintWhy(text, { pending = false } = {}) {
+    if (!els.dangerWhy) return;
+    if (!text && !pending) { els.dangerWhy.hidden = true; els.dangerWhy.innerHTML = ''; return; }
+    els.dangerWhy.hidden = false;
+    const local = R.whyLocal || '';
+    els.dangerWhy.innerHTML =
+      (local ? `<div class="why-local">${escapeHtml(local)}</div>` : '') +
+      `<div class="why-ai"><span class="why-label">AI</span>` +
+      `<span class="why-text">${text ? escapeHtml(text) : '……'}</span></div>`;
+  }
+
+  function dangerRows() {
+    const rows = R.infer?.rows || [];
+    const tot = rows.reduce((a, r) => a + r.p, 0) || 1;
+    return rows.map((r) => ({ tile: r.tile, p: r.p / tot, rank: rows.indexOf(r) + 1 }));
+  }
+
+  function paintDanger() {
+    if (!els.dangerPanel) return;
+    const on = R.on && R.showDanger && !!R.scenario;
+    els.dangerBtn?.classList.toggle('on', on);
+    els.dangerBtn?.setAttribute('aria-pressed', String(on));
+    els.dangerPanel.hidden = !on;
+    els.area?.classList.toggle('danger-on', on);
+    if (!on) return;
+
+    const rows = dangerRows().slice(0, 8);
+    const cells = rows.map((r) => {
+      const cell = document.createElement('div');
+      cell.className = 'danger-cell' + (r.tile === R.whyTile ? ' picked' : '');
+      const b = tileEl(r.tile);
+      b.classList.add('danger-tile');
+      b.title = `${tileName(r.tile)} · 第 ${r.rank} 危险`;
+      b.addEventListener('click', () => explainTile(r.tile));
+      const pct = document.createElement('span');
+      pct.className = 'danger-pct';
+      pct.textContent = `#${r.rank} · ${Math.round(r.p * 100)}%`;
+      cell.append(b, pct);
+      return cell;
+    });
+    els.dangerList.replaceChildren(...cells);
+  }
+
+  /** 点榜单里某一张：本地先说事实，再让 AI 讲为什么 */
+  async function explainTile(tile) {
+    const sc = R.scenario;
+    if (!sc) return;
+    R.whyTile = tile;
+    paintDanger();
+
+    const row = dangerRows().find((r) => r.tile === tile);
+    const clues = riverClues(sc, tile);
+    const local =
+      `牌河估 ${Math.round((row?.p || 0) * 100)}% · 27 种里第 ${row?.rank || '?'} 危险` +
+      (clues.hard.length ? ` · ${clues.hard.join('、')}` : '') +
+      (clues.soft.length ? ` · ${clues.soft.join('；')}` : '');
+
+    R.whyLocal = local;
+    paintWhy('正在问 AI……', { pending: true });
+
+    if (tileWhyAbort) tileWhyAbort.abort();
+    const ctrl = new AbortController();
+    tileWhyAbort = ctrl;
+
+    try {
+      const res = await fetch('/api/read', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'tile',
+          knockTurn: sc.knockTurn,
+          discardsText: sc.discards.map(tileName).join(' '),
+          tile: tileName(tile),
+          p: row?.p || 0,
+          rank: row?.rank || 0,
+          kinds: KINDS,
+          cluesText: clues.hard.join('、'),
+          softText: clues.soft.join('；'),
+          waitsText: R.state === 'over' ? sc.waits.map(tileName).join(' / ') : '',
+          fallback: local,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) throw new Error('http');
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let ai = '';
+      let done = false;
+      while (!done) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buf += dec.decode(chunk.value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf('\n\n')) >= 0) {
+          const packet = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const line = packet.split('\n').find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (ev.t) { ai += ev.t; paintWhy(ai); }
+          if (ev.done) { done = true; break; }
+        }
+      }
+      if (!ai) paintWhy('（AI 没回话，先看上面这行本地结论）');
+    } catch {
+      paintWhy(local);
+    }
+  }
+
   /* ---------- 事件 ---------- */
 
   els.ansDanger.addEventListener('click', () => answer('danger'));
   els.ansSafe.addEventListener('click', () => answer('safe'));
   els.peek?.addEventListener('click', togglePeek);
+  function toggleDanger() {
+    R.showDanger = !R.showDanger;
+    R.whyTile = -1;
+    paintWhy('');
+    paint();
+  }
+
+  els.dangerBtn?.addEventListener('click', toggleDanger);
   els.nextQ.addEventListener('click', () => {
     if (R.state === 'over') startRound((Math.random() * 0xffffffff) >>> 0);
     else advance();
@@ -615,6 +745,7 @@ export function createReadMode(els, { toast } = {}) {
     },
     answer,
     peek: togglePeek,
+    toggleDanger,
     loadSeed(seed) { startRound(seed); },
     MAX_Q,
   };
