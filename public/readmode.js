@@ -51,8 +51,9 @@ function riverClues(sc, tile) {
 
   const s = suitOf(tile);
   const sameSuit = (t) => t >= 0 && t < KINDS && suitOf(t) === s;
-  if (sameSuit(tile - 3) && seen[tile - 3]) hard.push(`${tileName(tile - 3)} 是他的筋`);
-  else if (sameSuit(tile + 3) && seen[tile + 3]) hard.push(`${tileName(tile + 3)} 是他的筋`);
+  // 筋在这版（108 张、无字牌）几乎不含信息：实测 7.7%，其它牌 9.3% —— 只当弱线索
+  if (sameSuit(tile - 3) && seen[tile - 3]) soft.push(`${tileName(tile - 3)} 是他的筋（弱线索，别当安全牌）`);
+  else if (sameSuit(tile + 3) && seen[tile + 3]) soft.push(`${tileName(tile + 3)} 是他的筋（弱线索，别当安全牌）`);
 
   if (sc.discards.length >= 5 && (seen[tile] || 0) === 0) {
     const bySuit = [0, 0, 0];
