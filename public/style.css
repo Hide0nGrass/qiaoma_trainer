@@ -1379,3 +1379,13 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
   .read-area.danger-on .quiz-tile .tile { width: calc(var(--tw) * 0.95); height: calc(var(--th) * 0.95); }
   .read-area.danger-on .danger-list .tile { width: 34px; height: 47px; }
 }
+
+.danger-panel[hidden] { display: none !important; }
+
+.btn.over-btn { border-color: rgba(154, 107, 31, .55); color: #8a5f18; font-weight: 600; }
+.btn.over-btn:hover { background: rgba(154, 107, 31, .10); border-color: rgba(154, 107, 31, .75); }
+
+.read-area.over .feedback .fb-body { max-height: 96px; overflow-y: auto; }
+
+.read-area.over .quiz-tile .tile { width: calc(var(--tw) * 1.0); height: calc(var(--th) * 1.0); }
+.read-area.over .quiz { gap: 16px; }

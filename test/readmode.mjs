@@ -198,6 +198,33 @@ const s7 = JSON.parse(await c.evaluate(`JSON.stringify({
 check('切回拆搭后摇铃区隐藏', s7.readHidden === true);
 check('拆搭手牌仍在', s7.hand === 14, String(s7.hand));
 
+// 8. 局末按空格开下一局
+await c.evaluate("document.getElementById('modeRead').click(); 1");
+await c.sleep(500);
+await c.evaluate('__mjReadStart(20240301); 1');
+await c.sleep(700);
+for (let i = 0; i < 30; i++) {
+  const st = await c.evaluate('__mjRead().state');
+  if (st === 'over') break;
+  if (st === 'revealed') {
+    await c.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); 1");
+    await c.sleep(300);
+    continue;
+  }
+  await c.evaluate("__mjAnswer('safe'); 1");
+  await c.sleep(700);
+  if ((await c.evaluate('__mjRead().state')) === 'over') break;
+  await c.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); 1");
+  await c.sleep(260);
+}
+const overSt = await c.evaluate('__mjRead().state');
+check('能走到局末', overSt === 'over', overSt);
+check('局末按钮是下一局', (await c.evaluate("document.getElementById('nextQ').textContent.trim()")).startsWith('下一局'));
+await c.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); 1");
+await c.sleep(800);
+const afterNext = JSON.parse(await c.evaluate(`JSON.stringify({ state: __mjRead().state, qi: __mjRead().qi })`));
+check('空格能开下一局', afterNext.state === 'question' && afterNext.qi === 0, JSON.stringify(afterNext));
+
 check('无控制台错误', c.logs.length === 0, JSON.stringify(c.logs.slice(0, 2)));
 
 console.log(results.join('\n'));

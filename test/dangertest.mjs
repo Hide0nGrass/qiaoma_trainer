@@ -25,6 +25,7 @@ t('解释里有名次或概率', /牌河估|第\s*\d+\s*危险|#1/.test(why));
 await c.evaluate("document.getElementById('rdDanger').click(); 1");
 await c.sleep(250);
 t('再点收起', await c.evaluate("document.getElementById('rdDangerPanel').hidden"));
+t('收起后真的不可见', (await c.evaluate("getComputedStyle(document.getElementById('rdDangerPanel')).display")) === 'none');
 
 console.log('PASS', pass.length, pass);
 if (fail.length) { console.log('FAIL', fail.length, fail); process.exitCode = 1; }

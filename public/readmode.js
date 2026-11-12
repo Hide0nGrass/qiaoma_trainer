@@ -367,6 +367,8 @@ function tileEl(tile, { small = false, mark = false } = {}) {
     els.ansDanger.hidden = R.state !== 'question';
     els.ansSafe.hidden = R.state !== 'question';
     els.nextQ.hidden = R.state === 'question';
+    els.nextQ.classList.toggle('over-btn', over);
+    els.area?.classList.toggle('over', over);
     if (!els.nextQ.hidden) {
       els.nextQ.innerHTML = (R.state === 'over' ? '下一局' : '继续') + ' <kbd>Space</kbd>';
     }
@@ -582,6 +584,7 @@ function tileEl(tile, { small = false, mark = false } = {}) {
   }
 
   function advance() {
+    if (R.state === 'over') { startRound((Math.random() * 0xffffffff) >>> 0); return; }
     if (R.state !== 'revealed') return;
     if (R.pos + 1 >= R.scenario.bag.length) {
       R.state = 'over';
