@@ -6,12 +6,16 @@
 //   brier  —— 每张牌 (p − 实际是否听这张)² 的平均，越小越好
 //   base   —— 全 0 预测的 brier（听牌种数 / 27），用来对比
 import { simulateRound, waitsOf, newDeck } from '../opponent.mjs';
-import { inferWaits, dangerTable } from '../read.mjs';
+import { inferWaits, dangerTable, featureRead } from '../read.mjs';
 import { countsOf, tileName } from '../engine.mjs';
 
 const ROUNDS = Number(process.argv[2] || 24);
 const SAMPLES = Number(process.argv[3] || 160);
 const BETA = Number(process.argv[4] || 1.2);
+const ADJ = Number(process.argv[5] || 0);
+const SUIT = Number(process.argv[6] || 0);
+const MIN_D = Number(process.argv[7] || 0);
+const MODE = process.argv[8] || 'sample'; // sample | feat | blend
 
 let hit3 = 0, hit5 = 0, trials = 0;
 let brierSum = 0, baseSum = 0, survivorSum = 0, msSum = 0;
@@ -21,6 +25,7 @@ const t0 = Date.now();
 for (let g = 0; g < ROUNDS; g++) {
   const r = simulateRound(1000 + g * 7919, 12);
   if (r.knockAt < 0 || !r.waits || !r.waits.length) { noKnock++; continue; }
+  if (MIN_D && r.path.length < MIN_D) { noKnock++; continue; }
 
   // 可见牌 = 他的牌河 + 我的 13 张（独立发牌，不能拿他的起手当我的手牌，
   // 否则会把他的听张从牌池里扣掉，排名直接反相关）
@@ -40,7 +45,16 @@ for (let g = 0; g < ROUNDS; g++) {
   const v = visible.map((n) => Math.min(4, n));
 
   const start = Date.now();
-  const read = inferWaits({ discards: r.path.map((x) => x.discard), visible: v, samples: SAMPLES, beta: BETA, seed: g + 1 });
+  const dpath = r.path.map((x) => x.discard);
+  let read;
+  if (MODE === 'feat') read = featureRead(dpath, v);
+  else if (MODE === 'blend') {
+    const a = inferWaits({ discards: dpath, visible: v, samples: SAMPLES, seed: g + 1, adjacency: ADJ, suitFocus: SUIT });
+    const b = featureRead(dpath, v);
+    const p = new Map();
+    for (let t = 0; t < 27; t++) p.set(t, 0.5 * (a.p.get(t) || 0) + 0.5 * (b.p.get(t) || 0));
+    read = { p, totalW: a.totalW, survivors: a.survivors, samples: SAMPLES };
+  } else read = inferWaits({ discards: dpath, visible: v, samples: SAMPLES, seed: g + 1, adjacency: ADJ, suitFocus: SUIT });
   msSum += Date.now() - start;
 
   const truth = new Set(r.waits.map((w) => w.tile));

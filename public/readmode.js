@@ -11,7 +11,7 @@
 // 这样练的是读牌，不是透视。
 import { decompose, tileName } from '../engine.mjs';
 import { mulberry32, shuffle, simulateRound } from '../opponent.mjs';
-import { dangerTable, inferWaits } from '../read.mjs';
+import { dangerTable, blendedRead } from '../read.mjs';
 import { faceSVG } from './tiles.js';
 
 const KINDS = 27;
@@ -118,7 +118,7 @@ export function makeRound(seed) {
 
 /** 只根据牌河 + 可见牌推断他的听张概率，返回每种牌的危险排名 */
 export function readRound(sc, samples = READ_SAMPLES) {
-  const read = inferWaits({
+  const read = blendedRead({
     discards: sc.discardsInfo ?? sc.discards,
     visible: sc.visible,
     samples,

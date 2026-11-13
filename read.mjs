@@ -54,6 +54,8 @@ function sampleWinHand(pool, rnd) {
  * @param {'off'|'weak'|'strong'} [o.tsumogiri] 摸切惩罚系数怎么调（off = 与手切一样）
  * @param {'off'|'strong'} [o.tsumogiriHold] 摸切的牌在「他还留着？」上是否罚得更重
  * @param {boolean} [o.wall]     壁：某张牌 4 张全见时，依赖它的等待直接判死
+ * @param {number} [o.adjacency]  相邻惩罚底数（<1 生效）：他打过的牌紧挨着 H 里的牌就降权
+ * @param {number} [o.suitFocus]  花色集中度权重：晚打多的门若是 H 的主门就降权
  */
 export function inferWaits({
   discards,
@@ -66,6 +68,8 @@ export function inferWaits({
   tsumogiri = 'off',
   tsumogiriHold = 'off',
   wall = false,
+  adjacency = 0,
+  suitFocus = 0,
 }) {
   const rnd = mulberry32(seed >>> 0);
   const ds = discards.map((d) => (typeof d === 'number' ? { tile: d, tsumogiri: false } : d));
@@ -126,6 +130,33 @@ export function inferWaits({
       const f = penalty.get(tile);
       if (f !== undefined) w *= f;
     }
+    // 「交叉」特征一：他打过的牌若紧挨着 H 里的牌（同门 ±1/±2），
+    // 说明这手牌本来会用到它、不该打掉 —— 越晚打掉的越不可信。
+    if (adjacency !== 0) {
+      for (let i = 0; i < ds.length; i++) {
+        const t = ds[i].tile;
+        const age = ds.length - i;
+        const tim = age <= recent ? 1 : 0.55;
+        const rank = t % 9;
+        let adj = 0;
+        if (rank >= 1) adj += c13[t - 1];
+        if (rank >= 2) adj += c13[t - 2];
+        if (rank <= 7) adj += c13[t + 1];
+        if (rank <= 6) adj += c13[t + 2];
+        if (adj) w *= Math.pow(adjacency, adj * tim);
+      }
+    }
+    // 「交叉」特征二：花色集中度 —— 他大量晚打某一门，而 H 又堆在这一门，就更可疑。
+    if (suitFocus !== 0) {
+      const keep = [0, 0, 0], late = [0, 0, 0];
+      for (let t = 0; t < KINDS; t++) if (c13[t]) keep[(t / 9) | 0] += c13[t];
+      for (let i = 0; i < ds.length; i++) if (ds.length - i <= recent) late[(ds[i].tile / 9) | 0]++;
+      const lateSum = late[0] + late[1] + late[2] || 1;
+      for (let s2 = 0; s2 < 3; s2++) {
+        if (!late[s2]) continue;
+        w *= Math.exp(-suitFocus * (keep[s2] / 13) * (late[s2] / lateSum) * 3);
+      }
+    }
     // 他还留着「早就打掉过」的牌，越靠后打掉的越可疑
     for (const [d, f] of hold) {
       const n = c13[d];
@@ -153,4 +184,89 @@ export function dangerTable(read, visible) {
   }
   rows.sort((a, b) => b.score - a.score || b.p - a.p || a.tile - b.tile);
   return rows;
+}
+
+
+/* ---------- 交叉特征模型（离线训练：test/train.mjs） ---------- */
+export const READ_FEAT_W = [-1.3983,-0.9367,-0.4118,-0.1097,-0.0167,-0.5433,-0.5169,0.0179,-0.0065,-0.2527,-0.8814];
+
+/** 和他弃牌序列相关的 11 个特征（顺序必须与 test/train.mjs 一致） */
+export function readFeats(discards, visible) {
+  const ds = discards.map((d) => (typeof d === 'number' ? { tile: d, tsumogiri: false } : d));
+  const n = ds.length;
+  const tiles = ds.map((d) => d.tile);
+  const suitDisc = [0, 0, 0];
+  for (const t of tiles) suitDisc[(t / 9) | 0]++;
+  const lateCut = [], earlyCut = [];
+  for (let i = 0; i < n; i++) {
+    if (n - i <= 4 && !ds[i].tsumogiri) lateCut.push(tiles[i]);
+    if (i < 3) earlyCut.push(tiles[i]);
+  }
+  const own = new Map();
+  for (let i = 0; i < n; i++) {
+    const cur = own.get(tiles[i]) || { n: 0, late: 0 };
+    cur.n++;
+    if (n - i <= 4) cur.late++;
+    own.set(tiles[i], cur);
+  }
+  const near = (list, t) => {
+    const suit = (t / 9) | 0, rank = t % 9;
+    let c = 0;
+    for (const x of list) {
+      if (((x / 9) | 0) !== suit) continue;
+      const d = Math.abs((x % 9) - rank);
+      if (d === 1 || d === 2) c++;
+    }
+    return c;
+  };
+  const rows = [];
+  for (let t = 0; t < KINDS; t++) {
+    const suit = (t / 9) | 0, rank = t % 9;
+    const o = own.get(t) || { n: 0, late: 0 };
+    const sa = t - 3 >= suit * 9 ? t - 3 : -1;
+    const sb = t + 3 <= suit * 9 + 8 ? t + 3 : -1;
+    const a = sa >= 0 && tiles.includes(sa) ? 1 : 0;
+    const b = sb >= 0 && tiles.includes(sb) ? 1 : 0;
+    rows.push([
+      1,
+      o.n ? 1 : 0,
+      o.late ? 1 : 0,
+      a && b ? 1 : 0,
+      a && b && earlyCut.includes(sa) && earlyCut.includes(sb) ? 1 : 0,
+      suitDisc[suit] / (n || 1),
+      (visible[t] || 0) / 4,
+      rank >= 3 && rank <= 5 ? 1 : 0,
+      near(lateCut, t) / 3,
+      near(earlyCut, t) / 3,
+      Math.max(0, 4 - (visible[t] || 0)) / 4,
+    ]);
+  }
+  return rows;
+}
+
+/** 交叉特征模型的每张牌概率（27 张，和为 1） */
+export function featureRead(discards, visible) {
+  const rows = readFeats(discards, visible);
+  const raw = rows.map((x) => {
+    let z = 0;
+    for (let k = 0; k < READ_FEAT_W.length; k++) z += READ_FEAT_W[k] * x[k];
+    return Math.exp(z);
+  });
+  const sum = raw.reduce((a, b) => a + b, 0) || 1;
+  const p = new Map();
+  for (let t = 0; t < KINDS; t++) p.set(t, raw[t] / sum);
+  return { p, totalW: sum, survivors: KINDS, samples: 0 };
+}
+
+
+/**
+ * 线上用的读牌：交叉特征（瞬时）+ 采样（更强但慢）各占一半。
+ * 180 局校准（牌河 ≥7 张）：采样 top3 30% / top5 46%；混合 top3 39% / top5 54%。
+ */
+export function blendedRead({ discards, visible, samples = 300, seed = 1 }) {
+  const a = inferWaits({ discards, visible, samples, seed });
+  const b = featureRead(discards, visible);
+  const p = new Map();
+  for (let t = 0; t < KINDS; t++) p.set(t, 0.5 * (a.p.get(t) || 0) + 0.5 * (b.p.get(t) || 0));
+  return { p, totalW: a.totalW, survivors: a.survivors, samples };
 }
