@@ -1,0 +1,14 @@
+{
+  "name": "qiaoma-trainer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "敲麻拆搭训练器：本地牌效引擎 + DeepSeek 按需讲解",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test/engine.test.mjs && node test/decompose.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

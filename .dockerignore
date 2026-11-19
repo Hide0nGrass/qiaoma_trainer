@@ -1,0 +1,12 @@
+node_modules
+.git
+.gitignore
+.gitattributes
+.chrome-*
+coach.config.json
+coach.config.local.json
+shot-*.png
+docs
+test
+*.log
+README.md

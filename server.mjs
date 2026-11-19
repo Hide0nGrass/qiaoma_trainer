@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT || 8788);
-const HOST = '127.0.0.1';
+const HOST = process.env.HOST || '127.0.0.1';
+const PUBLIC_ROOT = PUBLIC.endsWith(path.sep) ? PUBLIC : PUBLIC + path.sep;
 
 /* ---------------- 配置 ---------------- */
 function loadConfig() {
@@ -48,7 +49,7 @@ function serveStatic(req, res, pathname) {
   let rel = pathname === '/' ? '/index.html' : pathname;
   rel = decodeURIComponent(rel);
   const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) { res.writeHead(403); res.end('forbidden'); return; }
+  if (file !== PUBLIC && !file.startsWith(PUBLIC_ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
   fs.readFile(file, (err, buf) => {
     if (err) {
       res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
