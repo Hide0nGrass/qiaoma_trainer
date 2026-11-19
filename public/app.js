@@ -1439,7 +1439,8 @@ els.aiClear?.addEventListener('click', () => {
 });
 refreshAIBadge();
 
-fetch('/api/health')
+const serverMode = ['127.0.0.1', 'localhost'].includes(location.hostname);
+if (!serverMode) { S.coachOff = !aiConfigured(); refreshAIBadge(); } else fetch('/api/health')
   .then((r) => r.json())
   .then((j) => { S.coachOff = !j.coach && !aiConfigured(); refreshAIBadge(); })
   .catch(() => { S.coachOff = !aiConfigured(); refreshAIBadge(); });
