@@ -4,7 +4,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # 只有运行时需要的文件（静态站点 + 三个引擎模块 + 服务端）
-COPY package.json server.mjs engine.mjs opponent.mjs read.mjs ./
+COPY package.json server.mjs prompts.mjs engine.mjs opponent.mjs read.mjs ./
 COPY public ./public
 
 ENV HOST=0.0.0.0

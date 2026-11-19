@@ -32,7 +32,8 @@
     </div>
 
     <div class="actions">
-      <button class="btn ghost" id="historyBtn" title="历史牌局（L）">历史 <kbd>L</kbd></button>
+      <button class="btn ghost" id="aiBtn" title="AI 设置：填入自己的 API（K）">AI 设置 <kbd>K</kbd></button>
+        <button class="btn ghost" id="historyBtn" title="历史牌局（L）">历史 <kbd>L</kbd></button>
       <button class="btn ghost" id="mistakeBtn" title="错题本（M）">错题本 <kbd>M</kbd></button>
       <button class="btn ghost" id="rulesBtn" title="规则说明">规则</button>
       <button class="btn ghost" id="favBtn" title="收藏的牌（F）">收藏 <kbd>F</kbd></button>
@@ -263,5 +264,27 @@
 </div>
 
 <script type="module" src="./app.js"></script>
+
+  <div class="modal" id="aiModal" hidden>
+    <div class="modal-card">
+      <button class="modal-x" id="aiClose" aria-label="关闭">×</button>
+      <h2>AI 设置</h2>
+      <p class="ai-hint">纯静态站点没有后端，所以 AI 讲解用<b>你自己的 API</b>。key 只存在这个浏览器（localStorage），请求由浏览器直接发给模型商，不经过任何服务器。不填也能用，只是没有讲解。</p>
+      <div class="ai-field"><label>协议</label>
+        <select id="aiProto">
+          <option value="anthropic">Anthropic Messages（/v1/messages）</option>
+          <option value="openai">OpenAI 兼容（/chat/completions）</option>
+        </select>
+      </div>
+      <div class="ai-field"><label>API 地址</label><input id="aiBase" placeholder="https://api.anthropic.com" autocomplete="off" spellcheck="false" /></div>
+      <div class="ai-field"><label>Key</label><input id="aiKey" type="password" placeholder="sk-ant-… / sk-…" autocomplete="off" spellcheck="false" /></div>
+      <div class="ai-field"><label>模型</label><input id="aiModel" placeholder="claude-3-5-haiku-latest / deepseek-chat" autocomplete="off" spellcheck="false" /></div>
+      <div class="ai-acts">
+        <button class="btn" id="aiClear">清除</button>
+        <button class="btn over-btn" id="aiSave">保存</button>
+      </div>
+      <p class="ai-note">提示：DeepSeek 官方是 OpenAI 协议（地址 <code>https://api.deepseek.com</code>）；Anthropic 官方在浏览器直连时要求 key 所属账号允许 CORS。</p>
+    </div>
+  </div>
 </body>
 </html>

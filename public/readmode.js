@@ -10,6 +10,7 @@
 // 他的真手牌只决定「打出去会不会被和」，并且只在整局结束时揭晓——
 // 这样练的是读牌，不是透视。
 import { decompose, tileName } from '../engine.mjs';
+import { aiFetch, aiConfigured, getAICfg } from './ai.js';
 import { mulberry32, shuffle, simulateRound } from '../opponent.mjs';
 import { dangerTable, blendedRead } from '../read.mjs';
 import { faceSVG } from './tiles.js';
@@ -195,12 +196,7 @@ export function createReadMode(els, { toast } = {}) {
     let doneSeen = false;
     const guard = setTimeout(() => { if (my === coach.seq && !doneSeen) ctrl.abort(); }, 12000);
     try {
-      const res = await fetch('/api/read', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: ctrl.signal,
-      });
+      const res = await aiFetch('/api/read', payload, ctrl.signal);
       if (!res.ok || !res.body) throw new Error('http ' + res.status);
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -669,24 +665,19 @@ function tileEl(tile, { small = false, mark = false } = {}) {
     tileWhyAbort = ctrl;
 
     try {
-      const res = await fetch('/api/read', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'tile',
-          knockTurn: sc.knockTurn,
-          discardsText: sc.discards.map(tileName).join(' '),
-          tile: tileName(tile),
-          p: row?.p || 0,
-          rank: row?.rank || 0,
-          kinds: KINDS,
-          cluesText: clues.hard.join('、'),
-          softText: clues.soft.join('；'),
-          waitsText: R.state === 'over' ? sc.waits.map(tileName).join(' / ') : '',
-          fallback: local,
-        }),
-        signal: ctrl.signal,
-      });
+      const res = await aiFetch('/api/read', {
+        mode: 'tile',
+        knockTurn: sc.knockTurn,
+        discardsText: sc.discards.map(tileName).join(' '),
+        tile: tileName(tile),
+        p: row?.p || 0,
+        rank: row?.rank || 0,
+        kinds: KINDS,
+        cluesText: [...clues.hard, ...clues.soft].join('；'),
+        softText: clues.soft.join('；'),
+        waitsText: sc.waits.map(tileName).join(' / '),
+        fallback: local,
+      }, ctrl.signal);
       if (!res.ok || !res.body) throw new Error('http');
       const reader = res.body.getReader();
       const dec = new TextDecoder();

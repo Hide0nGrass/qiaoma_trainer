@@ -4,12 +4,15 @@ import {
   newRound, shanten, tileName, tileShort, ukeireAfter,
 } from '../engine.mjs';
 import { faceSVG } from './tiles.js';
+import { aiFetch, aiConfigured, getAICfg, setAICfg } from './ai.js';
 import { createReadMode } from './readmode.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
   hand: $('hand'), river: $('river'), preview: $('preview'),
-  tilewall: $('tilewall'), groupSwitch: $('groupSwitch'), previewSwitch: $('previewSwitch'),
+  tilewall: $('tilewall'),
+  aiBtn: $('aiBtn'), aiModal: $('aiModal'), aiClose: $('aiClose'), aiProto: $('aiProto'),
+  aiBase: $('aiBase'), aiKey: $('aiKey'), aiModel: $('aiModel'), aiSave: $('aiSave'), aiClear: $('aiClear'), groupSwitch: $('groupSwitch'), previewSwitch: $('previewSwitch'),
   badge: $('badge'), headline: $('headline'), metrics: $('metrics'),
   coach: $('coach'), coachText: $('coachText'), coachMeta: $('coachMeta'),
   roundChip: $('roundChip'), wallInfo: $('wallInfo'), shantenInfo: $('shantenInfo'),
@@ -567,12 +570,7 @@ async function askCoach(payload) {
   }, 12000);
 
   try {
-    const res = await fetch('/api/coach', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
+    const res = await aiFetch('/api/coach', payload, ctrl.signal);
     if (!res.ok || !res.body) throw new Error('http ' + res.status);
 
     const reader = res.body.getReader();
@@ -742,7 +740,7 @@ function forceCommit() {
 function explainLast() {
   if (!S.lastPayload || S.coachStreaming) return;
   if (S.coachOff) {
-    toast('未接入 AI · 复制 coach.config.example.json 为 coach.config.json 并填入 key 后重启');
+    toast('未接入 AI · 点右上角「AI 设置」填自己的 key，或本地跑服务端配置 coach.config.json');
     return;
   }
   S.coachStreaming = true;
@@ -1346,6 +1344,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'r' || e.key === 'R') { replayRound(); return; }
   if (e.key === 'h' || e.key === 'H') { showHint(); return; }
   if (e.key === 'a' || e.key === 'A') { explainLast(); return; }
+    if (e.key === 'k' || e.key === 'K') { if (els.aiModal.hidden) openAIModal(); else closeAIModal(); return; }
 });
 
 /* ------------------------------------------------------------------ *
@@ -1392,10 +1391,58 @@ loadFavs();
 renderMistakes();
 startRound(nextSeed());
 applyGroups(groupsOn, { silent: true });
+/* ---------------- AI 设置（静态版 BYOK） ---------------- */
+function refreshAIBadge() {
+  if (!els.aiBtn) return;
+  els.aiBtn.classList.toggle('on', aiConfigured());
+  els.aiBtn.title = aiConfigured()
+    ? 'AI 已配置（用的是你自己的 key）'
+    : 'AI 设置：填入自己的 API key 才能让 AI 讲解';
+}
+
+function openAIModal() {
+  const cfg = getAICfg() || {};
+  els.aiProto.value = cfg.proto === 'openai' ? 'openai' : 'anthropic';
+  els.aiBase.value = cfg.base || '';
+  els.aiKey.value = cfg.key || '';
+  els.aiModel.value = cfg.model || '';
+  els.aiModal.hidden = false;
+}
+
+function closeAIModal() { els.aiModal.hidden = true; }
+
+function saveAICfg() {
+  const base = els.aiBase.value.trim();
+  const key = els.aiKey.value.trim();
+  if (!base || !key) { toast('API 地址和 key 都要填'); return; }
+  setAICfg({
+    base,
+    key,
+    model: els.aiModel.value.trim(),
+    proto: els.aiProto.value === 'openai' ? 'openai' : 'anthropic',
+  });
+  S.coachOff = false;
+  refreshAIBadge();
+  closeAIModal();
+  toast('AI 已接入 · 按 A 试试');
+}
+
+els.aiBtn?.addEventListener('click', openAIModal);
+els.aiClose?.addEventListener('click', closeAIModal);
+els.aiSave?.addEventListener('click', saveAICfg);
+els.aiClear?.addEventListener('click', () => {
+  setAICfg(null);
+  els.aiKey.value = '';
+  refreshAIBadge();
+  S.coachOff = true;
+  toast('已清除本机 key');
+});
+refreshAIBadge();
+
 fetch('/api/health')
   .then((r) => r.json())
-  .then((j) => { S.coachOff = !j.coach; })
-  .catch(() => { S.coachOff = true; });
+  .then((j) => { S.coachOff = !j.coach && !aiConfigured(); refreshAIBadge(); })
+  .catch(() => { S.coachOff = !aiConfigured(); refreshAIBadge(); });
 
 // 调试/自动化钩子
 window.__mj = {

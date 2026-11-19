@@ -1389,3 +1389,17 @@ body.mode-read #replayBtn, body.mode-read #newBtn { display: none; }
 
 .read-area.over .quiz-tile .tile { width: calc(var(--tw) * 1.0); height: calc(var(--th) * 1.0); }
 .read-area.over .quiz { gap: 16px; }
+
+.ai-hint { font-size: 12.5px; line-height: 1.7; color: var(--ink-3); margin: 4px 0 14px; }
+.ai-hint b { color: var(--ink); }
+.ai-field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ai-field label { flex: 0 0 68px; font-size: 12.5px; color: var(--muted); }
+.ai-field input, .ai-field select {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 9px 10px;
+  border: 1px solid var(--line-2); border-radius: 8px; background: #fffdf8; color: var(--ink);
+}
+.ai-field input:focus, .ai-field select:focus { outline: none; border-color: rgba(36,29,20,.55); }
+.ai-acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.ai-note { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin: 12px 0 0; }
+.ai-note code { font-size: 11px; background: var(--paper-3); padding: 1px 4px; border-radius: 4px; }
+#aiBtn.on { color: var(--green); border-color: rgba(47,107,82,.45); }
