@@ -24,9 +24,11 @@ ok('标准胡牌 123m456m789m123p99s = -1', () => {
   assert.equal(isWin(countsOf(h)), true);
 });
 
-ok('七对胡牌 = -1', () => {
-  const h = [...M(1, 1, 2, 2, 3, 3), ...P(4, 4, 5, 5), ...S(6, 6, 7, 7)];
-  assert.equal(shantenOfTiles(h), -1);
+ok('七对不算胡牌（敲麻没有七对）', () => {
+  // 2m4m6m8m + 2p4p6p，七对但凑不出任何面子
+  const c = countsOf([1,1,3,3,5,5,7,7, 10,10,12,12,14,14]);
+  assert.ok(shanten(c) > -1, String(shanten(c)));
+  assert.ok(!isWin(c));
 });
 
 ok('听牌 123m456m789m11p23p：0 向听，听 1p/4p', () => {
@@ -43,10 +45,9 @@ ok('单钓 123m456m789m123p + 9s：0 向听，听 9s', () => {
   assert.deepEqual(waitsOf(countsOf(h)).map((x) => x.tile), S(9));
 });
 
-ok('七对听牌：6 对 + 单张，0 向听', () => {
-  const h = [...M(1, 1, 2, 2, 3, 3), ...P(4, 4, 5, 5), ...S(6, 6, 7)];
-  assert.equal(shantenOfTiles(h), 0);
-  assert.deepEqual(waitsOf(countsOf(h)).map((x) => x.tile), S(7));
+ok('六对 + 单张不算听牌', () => {
+  const c = countsOf([1,1,3,3,5,5,7,7, 10,10,12,12, 14]);
+  assert.ok(shanten(c) > 0, String(shanten(c)));
 });
 
 console.log('进张');
@@ -196,8 +197,7 @@ ok('同一 seed 发牌可复现', () => {
   assert.deepEqual(a.wall, b.wall);
 });
 
-ok('牌型：七对 / 清一色 / 碰碰胡', () => {
-  assert.ok(handType(countsOf([...M(1, 1, 2, 2, 3, 3), ...P(4, 4, 5, 5), ...S(6, 6, 7, 7)])).includes('七对'));
+ok('牌型：清一色 / 碰碰胡', () => {
   assert.ok(handType(countsOf([...M(1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 5, 5)])).includes('清一色'));
   assert.ok(handType(countsOf([...M(1, 1, 1, 2, 2, 2, 3, 3, 3), ...P(4, 4, 4), ...S(9, 9)])).includes('碰碰胡'));
 });

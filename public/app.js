@@ -278,12 +278,12 @@ function updateMeta() {
   els.wallInfo.textContent = `牌墙 ${Math.max(0, S.wall.length - S.cursor)} 张`;
   els.shantenInfo.textContent = sh === null
     ? '向听 —'
-    : `向听 ${sh}${sh === 0 ? ' · 听牌' : ''}${seven ? ' · 七对路线' : ''}`;
+    : `向听 ${sh}${sh === 0 ? ' · 听牌' : ''}`;
   paintAdvice(info);
 }
 
 // 敲不敲：按「你已经摸到第几手」判断值不值得再等
-// 前提（用户的番规）：平胡 0 番和不了，门清 1 番是最低，碰碰胡 / 七对 2 番，除非杠开
+// 前提（用户的番规）：平胡 0 番和不了，门清 1 番是最低，碰碰胡 2 番，除非杠开（敲麻没有七对）
 const ADV_Q = 0.08;   // 假设对手每手 8% 先和
 function paintAdvice(info) {
   if (!els.advice) return;
@@ -297,9 +297,7 @@ function paintAdvice(info) {
   }
   const best = info[0];
   const sh = best.shanten;
-  const c = countsOf(S.hand);
-  const pairs = c.reduce((a, v) => a + (v >= 4 ? 2 : v >= 2 ? 1 : 0), 0);
-  const trips = c.filter((v) => v >= 3).length;
+  const c = countsOf(S.hand);  const trips = c.filter((v) => v >= 3).length;
   const suits = [c.slice(0, 9).some(Boolean), c.slice(9, 18).some(Boolean), c.slice(18).some(Boolean)]
     .filter(Boolean).length;
   let hasRun = false;
@@ -321,13 +319,12 @@ function paintAdvice(info) {
   const p = k / wall;
   const decay = Math.min(0.9, p + ADV_Q);
   const mMax = decay > 0 && decay < 1 ? Math.floor(Math.log(2) / -Math.log(1 - decay)) : 0;
-  const route = sevenNow || pairs >= 6 ? '七对'
-    : (!hasRun && trips >= 3) ? '碰碰胡'
+  const route = (!hasRun && trips >= 3) ? '碰碰胡'
     : suits === 1 ? '清一色'
     : null;
   // 做大牌的那张：手上唯一没成刻/对的那张（单吊）
   let bigTile = -1;
-  if (route === '碰碰胡' || route === '七对') {
+  if (route === '碰碰胡') {
     for (let i = 0; i < c.length; i++) {
       if (c[i] === 1) { bigTile = i; break; }
     }

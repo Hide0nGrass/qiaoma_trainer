@@ -31,10 +31,10 @@ const edge = decompose([0, 1, 9, 9, 10, 10, 11, 11, 18, 18, 19, 19, 20]);
 check('12 边张 waitText 含 3万', edge.blocks.some((b) => b.shape === '边张' && /3万/.test(b.waitText || '')),
   edge.blocks.map((b) => b.shape + ':' + b.waitText).join(','));
 
-// 3) 七对
-const chi = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
-const dc = decompose(chi);
-check('七对识别', dc.sevenPairs === true && dc.shanten === shanten(countsOf(chi)), `${dc.sevenPairs} ${dc.shanten}`);
+// 3) 七对不是目标牌型：不再走七对分支
+const chiShape = [1,1,3,3,5,5,7,7, 10,10,12,12,14,14];
+const dc = decompose(chiShape);
+check('七对不特殊处理', dc.sevenPairs === false && dc.shanten === shanten(countsOf(chiShape)), `${dc.sevenPairs} ${dc.shanten}`);
 
 // 4) 每种块的 tiles 都能在手里找到（张数不超）
 function legal(blocks, tiles) {
@@ -43,7 +43,7 @@ function legal(blocks, tiles) {
   for (const b of blocks) for (const t of b.tiles) used[t]++;
   return used.every((n, i) => n <= c[i]);
 }
-check('不超用牌', legal(dc.blocks, chi));
+check('不超用牌', legal(dc.blocks, chiShape));
 
 // 5) 随机 200 手：向听一致 + 张数守恒 + 性能
 let worst = 0;

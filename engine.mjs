@@ -1,7 +1,7 @@
 /**
  * 敲麻拆搭训练器 · 牌效率引擎
  * 108 张：万/筒/条 各 1-9，每种 4 张，无字牌。
- * 目标：4 面子 + 1 将；另计七对。
+ * 目标：4 面子 + 1 将（敲麻没有七对，按用户确认的规则）。
  */
 
 export const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -120,7 +120,7 @@ export function shanten(c) {
   const k = ckey(c);
   const hit = cache.get(k);
   if (hit !== undefined) return hit;
-  const v = Math.min(standardShanten(c), chiitoiShanten(c));
+  const v = standardShanten(c);
   if (cache.size > 200000) cache.clear();
   cache.set(k, v);
   return v;
@@ -515,29 +515,11 @@ function bestStructure(c) {
 
 /**
  * 手牌拆解（与向听数口径一致）。
- * 返回 { shanten, blocks:[{kind,shape,tiles,waitText?}], sevenPairs }
+ * 返回 { shanten, blocks:[{kind,shape,tiles,waitText?}], sevenPairs:false }
  */
 export function decompose(hand) {
   const c = countsOf(hand);
-  const seven = chiitoiShanten(c);
   const best = bestStructure(c);
-  const isSevenShape = seven === -1 && c.every((n) => n === 0 || n === 2);
-
-  if (seven < best.shanten || isSevenShape) {
-    const blocks = [];
-    let singles = [];
-    for (let t = 0; t < TYPES; t++) {
-      const n = c[t];
-      if (n >= 2) {
-        for (let k = 0; k < n >> 1; k++) {
-          blocks.push({ kind: 'pair', shape: '对子', tiles: [t, t], waitText: '等 1 张成刻' });
-        }
-        if (n % 2) singles.push(t);
-      } else if (n === 1) singles.push(t);
-    }
-    blocks.push(...singles.map((t) => ({ kind: 'single', shape: '孤张', tiles: [t] })));
-    return { shanten: seven, blocks, sevenPairs: true };
-  }
 
   const blocks = best.blocks.map((b) => {
     const out = { ...b, tiles: b.tiles.slice() };
@@ -578,7 +560,6 @@ export function handType(c) {
     if (c[i] >= 2) pairs++;
     if (c[i] % 2 !== 0) allEven = false;
   }
-  if (allEven && pairs === 7) types.push('七对');
   if (suits.size === 1) types.push('清一色');
   // 碰碰胡：去掉将后每种牌数量都是 3 的倍数
   let pengpeng = false;
